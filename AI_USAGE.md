@@ -18,6 +18,10 @@
 | 2026-01-31 | Claude Code | plans/260131-0707-*/plan.md | Updated validation decisions: LP deferred, oracle roadmap |
 | 2026-01-31 | Claude Code | docs/system-architecture.md | Fixed: Quick Sell flow, oracle staleness, idempotency, expires_at |
 | 2026-01-31 | Claude Code | docs/project-roadmap.md | Deleted: outdated, replaced by plans/ directory |
+| 2026-01-31 | Claude Code | app/src/services/trading-service.ts | Created mock trading service (rate, buy, sell orders) |
+| 2026-01-31 | Claude Code | app/src/stores/trading-store.ts | Created Zustand store for trading state |
+| 2026-01-31 | Claude Code | app/src/components/trading/*.tsx | Created 4 trading components (rate, bank picker, QR, fees) |
+| 2026-01-31 | Claude Code | app/app/(tabs)/convert.tsx | Implemented full Buy/QuickSell/SmartSell trading UI |
 
 ## Guidelines
 

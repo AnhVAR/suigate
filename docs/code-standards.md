@@ -538,3 +538,36 @@ Example commit: `feat: add vnd-to-usdc conversion service`
 - Log security events (not sensitive data)
 
 See security guidelines in project-overview-pdr.md for additional requirements.
+
+## Dependency Management
+
+### React Version (Critical)
+
+Expo 54 requires exact versions. **DO NOT** change these:
+
+```json
+// app/package.json
+"react": "19.1.0",
+"react-dom": "19.1.0"
+
+// Root & app package.json overrides
+"overrides": {
+  "react": "19.1.0",
+  "react-dom": "19.1.0"
+}
+```
+
+**If "Invalid hook call" error occurs:**
+```bash
+rm -rf node_modules app/node_modules package-lock.json
+npm install
+npx expo start --android --clear
+```
+
+### Adding New Packages
+
+Always check Expo compatibility first:
+```bash
+npx expo install <package-name>  # Preferred
+npm install <package-name>        # Only if not Expo-managed
+```
