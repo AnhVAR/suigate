@@ -22,6 +22,11 @@
 | 2026-01-31 | Claude Code | app/src/stores/trading-store.ts | Created Zustand store for trading state |
 | 2026-01-31 | Claude Code | app/src/components/trading/*.tsx | Created 4 trading components (rate, bank picker, QR, fees) |
 | 2026-01-31 | Claude Code | app/app/(tabs)/convert.tsx | Implemented full Buy/QuickSell/SmartSell trading UI |
+| 2026-01-31 | Claude Code | app/src/i18n/* | Created i18n setup with i18next, expo-localization |
+| 2026-01-31 | Claude Code | app/src/i18n/locales/*.json | Created En/Vi translation files for all UI text |
+| 2026-01-31 | Claude Code | app/src/components/error/*.tsx | Created NetworkError, InlineError, ErrorBoundary components |
+| 2026-01-31 | Claude Code | app/src/utils/format-*.ts | Created currency and date formatting utilities |
+| 2026-01-31 | Claude Code | app/app/(tabs)/settings.tsx | Integrated i18n language toggle with persistence |
 
 ## Guidelines
 
