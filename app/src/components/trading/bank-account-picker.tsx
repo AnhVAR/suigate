@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, Modal, FlatList } from 'react-native';
+import { View, Text, Pressable, Modal, ScrollView } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 
 interface BankAccount {
@@ -64,7 +64,7 @@ export const BankAccountPicker: React.FC<BankAccountPickerProps> = ({
         Bank Account
       </Text>
 
-      <TouchableOpacity
+      <Pressable
         onPress={() => setIsModalVisible(true)}
         className="flex-row items-center justify-between bg-neutral-50 rounded-xl border border-neutral-200 p-4"
       >
@@ -89,7 +89,7 @@ export const BankAccountPicker: React.FC<BankAccountPickerProps> = ({
         )}
 
         <MaterialIcons name="chevron-right" size={24} color="#9ca3af" />
-      </TouchableOpacity>
+      </Pressable>
 
       {/* Modal */}
       <Modal
@@ -101,20 +101,18 @@ export const BankAccountPicker: React.FC<BankAccountPickerProps> = ({
         <View className="flex-1 bg-white">
           {/* Header */}
           <View className="flex-row items-center justify-between p-4 border-b border-neutral-100">
-            <TouchableOpacity onPress={() => setIsModalVisible(false)}>
+            <Pressable onPress={() => setIsModalVisible(false)}>
               <Text className="text-neutral-500">Cancel</Text>
-            </TouchableOpacity>
+            </Pressable>
             <Text className="text-lg font-semibold">Select Account</Text>
             <View className="w-12" />
           </View>
 
           {/* Account List */}
-          <FlatList
-            data={accounts}
-            keyExtractor={(item) => item.id.toString()}
-            contentContainerStyle={{ padding: 16 }}
-            renderItem={({ item }) => (
-              <TouchableOpacity
+          <ScrollView className="flex-1 p-4">
+            {accounts.map((item) => (
+              <Pressable
+                key={item.id}
                 onPress={() => handleSelect(item.id)}
                 className={`flex-row items-center p-4 mb-3 rounded-xl border ${
                   selectedId === item.id
@@ -150,22 +148,20 @@ export const BankAccountPicker: React.FC<BankAccountPickerProps> = ({
                 {selectedId === item.id && (
                   <MaterialIcons name="check-circle" size={24} color="#8b5cf6" />
                 )}
-              </TouchableOpacity>
+              </Pressable>
+            ))}
+            {onAddNew && (
+              <Pressable
+                onPress={onAddNew}
+                className="flex-row items-center justify-center p-4 border border-dashed border-neutral-300 rounded-xl mt-2"
+              >
+                <MaterialIcons name="add" size={20} color="#8b5cf6" />
+                <Text className="text-primary-500 font-medium ml-2">
+                  Add New Account
+                </Text>
+              </Pressable>
             )}
-            ListFooterComponent={
-              onAddNew ? (
-                <TouchableOpacity
-                  onPress={onAddNew}
-                  className="flex-row items-center justify-center p-4 border border-dashed border-neutral-300 rounded-xl mt-2"
-                >
-                  <MaterialIcons name="add" size={20} color="#8b5cf6" />
-                  <Text className="text-primary-500 font-medium ml-2">
-                    Add New Account
-                  </Text>
-                </TouchableOpacity>
-              ) : null
-            }
-          />
+          </ScrollView>
         </View>
       </Modal>
     </View>

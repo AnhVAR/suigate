@@ -28,9 +28,9 @@ const variantStyles: Record<ButtonVariant, { bg: string; text: string; border?: 
 };
 
 const sizeStyles: Record<ButtonSize, { height: string; text: string; px: string }> = {
-  sm: { height: 'h-10', text: 'text-sm', px: 'px-4' },
-  md: { height: 'h-13', text: 'text-base', px: 'px-6' },
-  lg: { height: 'h-14', text: 'text-lg', px: 'px-8' },
+  sm: { height: 'h-11', text: 'text-sm', px: 'px-4' },
+  md: { height: 'h-14', text: 'text-base', px: 'px-6' },
+  lg: { height: 'h-16', text: 'text-lg', px: 'px-8' },
 };
 
 export const PrimaryButton: React.FC<PrimaryButtonProps> = ({

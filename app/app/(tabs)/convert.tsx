@@ -3,7 +3,7 @@
  * Unified trading interface for Buy USDC, Quick Sell, and Smart Sell
  */
 
-import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, ScrollView, Pressable, Alert } from 'react-native';
 import { useState, useEffect, useCallback } from 'react';
 import { useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -209,24 +209,29 @@ export default function ConvertScreen() {
         {/* Mode Tabs */}
         <View className="flex-row bg-neutral-100 rounded-xl p-1 mb-6">
           {(['buy', 'quick-sell', 'smart-sell'] as TradeMode[]).map((m) => (
-            <TouchableOpacity
+            <Pressable
               key={m}
               onPress={() => {
                 setMode(m);
                 handleReset();
               }}
-              className={`flex-1 py-3 rounded-lg items-center ${
-                mode === m ? 'bg-white shadow-sm' : ''
-              }`}
+              style={{
+                flex: 1,
+                paddingVertical: 12,
+                borderRadius: 8,
+                alignItems: 'center',
+                backgroundColor: mode === m ? '#ffffff' : 'transparent',
+              }}
             >
               <Text
-                className={`font-medium ${
-                  mode === m ? 'text-primary-600' : 'text-neutral-500'
-                }`}
+                style={{
+                  fontWeight: '500',
+                  color: mode === m ? '#7c3aed' : '#6b7280',
+                }}
               >
                 {m === 'buy' ? 'Buy' : m === 'quick-sell' ? 'Quick Sell' : 'Smart Sell'}
               </Text>
-            </TouchableOpacity>
+            </Pressable>
           ))}
         </View>
 
