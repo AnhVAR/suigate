@@ -47,7 +47,7 @@ export default function KycVerificationScreen() {
 
           <View className="mt-8">
             <View className="w-48 h-1 bg-neutral-200 rounded-full overflow-hidden">
-              <View className="w-1/2 h-full bg-primary-500 animate-pulse" />
+              <View className="w-1/2 h-full bg-primary-500" />
             </View>
           </View>
         </View>
