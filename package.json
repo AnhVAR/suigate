@@ -1,0 +1,26 @@
+{
+  "name": "suigate",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Mobile wallet for VND-USDC conversion on Sui",
+  "workspaces": [
+    "app",
+    "backend"
+  ],
+  "scripts": {
+    "app": "npm run --workspace=app",
+    "backend": "npm run --workspace=backend",
+    "app:start": "npm run start --workspace=app",
+    "backend:start": "npm run start:dev --workspace=backend",
+    "contracts:build": "cd contracts && sui move build",
+    "contracts:test": "cd contracts && sui move test",
+    "install:all": "npm install && cd contracts && sui move build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/user/suigate.git"
+  },
+  "keywords": ["sui", "wallet", "usdc", "vnd", "expo"],
+  "author": "",
+  "license": "MIT"
+}

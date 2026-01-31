@@ -78,3 +78,38 @@ ck.md
 # AI assistant configs (local only)
 .claude/
 .opencode/
+
+# ===================
+# SuiGate Specific
+# ===================
+
+# App (Expo)
+app/node_modules/
+app/.expo/
+app/dist/
+app/web-build/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+
+# Backend (NestJS)
+backend/node_modules/
+backend/dist/
+backend/coverage/
+
+# Contracts (Move)
+contracts/build/
+
+# IDE
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# Test
+.nyc_output/
