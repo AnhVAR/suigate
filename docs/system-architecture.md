@@ -1,465 +1,479 @@
-# System Architecture - SuiGate
+# SuiGate - System Architecture
 
-High-level architecture and technical design for VND ↔ USDC wallet on Sui Network.
+**Version:** 1.0 | **Updated:** 2026-01-31 | **Status:** MVP Design
 
-## Architecture Overview
+## Overview
+
+3-layer architecture for VND-USDC conversion wallet on Sui Network.
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    Mobile Application                       │
-│                   (Expo / React Native)                     │
-│                                                             │
-│  ┌──────────────────┐ ┌──────────────────┐                 │
-│  │ Wallet Screen    │ │ Conversion Flow  │                 │
-│  │ Balance Display  │ │ Transaction UI   │                 │
-│  │ Send/Receive     │ │ History View     │                 │
-│  └────────┬─────────┘ └────────┬─────────┘                 │
-│           │                    │                            │
-│  ┌────────▼────────────────────▼─────────┐                │
-│  │     Service Layer (Business Logic)     │                │
-│  │  ┌─────────────────────────────────┐  │                │
-│  │  │ Wallet Service                  │  │                │
-│  │  │ Conversion Service              │  │                │
-│  │  │ KYC Service                     │  │                │
-│  │  │ Location Service                │  │                │
-│  │  │ Price Oracle Service            │  │                │
-│  │  └─────────────────────────────────┘  │                │
-│  └────────┬─────────────────────────────┘                 │
-│           │                                               │
-└───────────┼───────────────────────────────────────────────┘
-            │
-            │ JSON-RPC / APIs
-            │
-┌───────────▼───────────────────────────────────────────────┐
-│              External Services & Networks                 │
-│                                                           │
-│  ┌──────────────────┐ ┌──────────────────┐               │
-│  │ Sui Network      │ │ Google/Apple     │               │
-│  │ (Blockchain)     │ │ OAuth (zkLogin)  │               │
-│  └────────┬─────────┘ └────────┬─────────┘               │
-│           │                    │                         │
-│  ┌────────▼──────────┬─────────▼──────┐                 │
-│  │ Smart Contracts   │ eKYC Provider  │                 │
-│  │ ┌──────────────┐  │ (3rd-party)    │                 │
-│  │ │ vnd_usdc     │  │                │                 │
-│  │ │ oracle       │  │ GPS Validator  │                 │
-│  │ │ sponsored_tx │  │ (Location API) │                 │
-│  │ │ zklogin      │  │                │                 │
-│  │ └──────────────┘  │                │                 │
-│  └───────────────────┴────────────────┘                 │
-│                                                         │
-│  ┌────────────────────────────────────┐                │
-│  │ Sui USDC Token Contract            │                │
-│  │ (Standard token on Sui Mainnet)    │                │
-│  └────────────────────────────────────┘                │
-│                                                         │
-└─────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         MOBILE (Expo)                                    │
+│  zkLogin Auth │ Balance View │ Buy/Sell UI │ Bank Account Mgmt          │
+└───────────────────────────────┬─────────────────────────────────────────┘
+                                │ REST API
+┌───────────────────────────────▼─────────────────────────────────────────┐
+│                        BACKEND (NestJS)                                  │
+│  Auth │ Orders │ Webhooks │ Jobs │ Rate Feed                            │
+└─────────┬─────────────────────┬─────────────────────────────────────────┘
+          │ Supabase            │ Sui RPC
+┌─────────▼──────────┐  ┌───────▼─────────────────────────────────────────┐
+│   DATABASE         │  │              BLOCKCHAIN (Sui)                    │
+│  (PostgreSQL)      │  │  Escrow Module │ Liquidity Pool │ USDC          │
+└────────────────────┘  └─────────────────────────────────────────────────┘
 ```
 
-## Component Architecture
+## Tech Stack
 
-### 1. Mobile Application Layer
+| Layer | Technology | Rationale |
+|-------|------------|-----------|
+| Mobile | Expo SDK 52 + TypeScript | Cross-platform, fast iteration |
+| State | Zustand | Lightweight, hooks-based |
+| Backend | NestJS + TypeScript | Modular, type-safe |
+| Database | Supabase (PostgreSQL) | Free tier, RLS, realtime |
+| Queue | Bull + Redis (Railway) | Reliable, retries |
+| Blockchain | Sui Network + Move | zkLogin native, fast finality |
+| Payment | SePay (VietQR) | Vietnamese bank transfer |
+| Price | Binance API | VND/USDC mid-rate + spread |
 
-**Technology**: React Native with Expo
+---
 
-#### Screens
-- **Wallet Screen** - Display USDC balance, recent transactions
-- **Conversion Screen** - VND ↔ USDC swap interface with amount input
-- **Login Screen** - zkLogin via Google/Apple OAuth
-- **KYC Verification Screen** - eKYC flow with ID capture
-- **Location Verification Screen** - GPS consent & validation
-- **Transaction History** - List of past conversions and transfers
-- **Settings Screen** - User preferences, wallet management
+## Database Schema
 
-#### Component Tree
+### Entity Relationship
+
+```mermaid
+erDiagram
+    users ||--o{ bank_accounts : has
+    users ||--o{ orders : creates
+    orders ||--o{ transactions : generates
+
+    users {
+        uuid id PK
+        text google_id
+        text apple_id
+        text sui_address
+        kyc_status_enum kyc_status
+        boolean location_verified
+        timestamp created_at
+    }
+
+    bank_accounts {
+        bigserial id PK
+        uuid user_id FK
+        bytea account_number_encrypted
+        varchar bank_code
+        varchar account_holder
+        boolean is_primary
+    }
+
+    orders {
+        uuid id PK
+        uuid user_id FK
+        bigint bank_account_id FK
+        order_type_enum order_type
+        decimal amount_vnd
+        decimal amount_usdc
+        decimal rate
+        decimal target_rate
+        order_status_enum status
+        text escrow_object_id
+        text sepay_reference UK
+        text sepay_transaction_id UK
+        boolean needs_manual_review
+        timestamp expires_at
+    }
+
+    transactions {
+        bigserial id PK
+        uuid order_id FK
+        text tx_hash
+        tx_status_enum tx_status
+    }
+
+    conversion_rates {
+        bigserial id PK
+        decimal mid_rate
+        decimal buy_rate
+        decimal sell_rate
+        decimal spread_bps
+        varchar source
+        timestamp fetched_at
+    }
 ```
-App.tsx
-├── NavigationStack
-│   ├── LoginNavigator
-│   │   ├── LoginScreen
-│   │   ├── KycVerificationScreen
-│   │   └── LocationVerificationScreen
-│   └── MainNavigator (Post-Login)
-│       ├── WalletScreen
-│       ├── ConversionScreen
-│       ├── TransactionHistoryScreen
-│       └── SettingsScreen
+
+### ENUM Types
+
+```sql
+CREATE TYPE kyc_status_enum AS ENUM ('pending', 'approved', 'rejected');
+CREATE TYPE order_type_enum AS ENUM ('buy', 'quick_sell', 'smart_sell');
+CREATE TYPE order_status_enum AS ENUM ('pending', 'paid', 'processing', 'settled', 'cancelled', 'failed');
+CREATE TYPE tx_status_enum AS ENUM ('pending', 'confirmed', 'failed');
 ```
 
-### 2. Service Layer (Business Logic)
+### Key Indexes
 
-**Location**: `/app/src/services/`
+```sql
+CREATE INDEX idx_users_sui_address ON users(sui_address);
+CREATE INDEX idx_orders_user ON orders(user_id);
+CREATE INDEX idx_orders_status ON orders(status);
+CREATE INDEX idx_orders_sepay ON orders(sepay_reference);
+CREATE INDEX idx_orders_smart_sell ON orders(order_type, status)
+  WHERE order_type = 'smart_sell' AND status = 'pending';
+```
 
-#### Key Services
+### RLS Policies
 
-**SuiWalletService**
-- Manages wallet state and balance
-- Handles send/receive USDC transactions
-- Integrates with Sui JSON-RPC
-- Manages zkLogin authentication flow
+All tables use Row Level Security. Users can only access their own data via `auth.uid()`.
 
-```typescript
-interface WalletService {
-  getBalance(address: string): Promise<number>;
-  sendTransaction(to: string, amount: number): Promise<string>;
-  getTransactionHistory(address: string): Promise<Transaction[]>;
-  getWalletAddress(): Promise<string>;
+---
+
+## API Design
+
+### Endpoints Summary
+
+| Method | Endpoint | Purpose | Auth |
+|--------|----------|---------|------|
+| POST | /auth/zklogin | zkLogin registration | No |
+| GET | /users/me | Get profile + KYC status | Yes |
+| PATCH | /users/me/kyc | Update KYC (mock) | Yes |
+| PATCH | /users/me/location | Update location status | Yes |
+| GET | /wallet/balance | Get USDC balance | Yes |
+| GET | /rates/current | Get VND/USDC rate | Yes |
+| POST | /orders/buy | Create buy order | Yes |
+| POST | /orders/quick-sell | Create quick sell | Yes |
+| POST | /orders/smart-sell | Create smart sell | Yes |
+| GET | /orders | List orders | Yes |
+| GET | /orders/:id | Get order detail | Yes |
+| POST | /orders/:id/confirm | Confirm tx hash | Yes |
+| DELETE | /orders/:id | Cancel smart sell | Yes |
+| GET | /bank-accounts | List bank accounts | Yes |
+| POST | /bank-accounts | Add bank account | Yes |
+| DELETE | /bank-accounts/:id | Delete bank account | Yes |
+| POST | /webhooks/sepay | SePay webhook | Signature |
+
+### Key Request/Response
+
+**POST /orders/buy**
+```json
+// Request
+{ "amountVnd": 1000000 }
+
+// Response
+{
+  "orderId": "uuid",
+  "amountUsdc": "39.80",
+  "rate": "25000.00",
+  "qrCode": "data:image/png;base64,...",
+  "reference": "SG-ABC123",
+  "expiresAt": "2026-01-31T10:15:00Z"
 }
 ```
 
-**ConversionService**
-- Executes VND ↔ USDC conversions
-- Calls smart contract for swap logic
-- Applies sponsored transactions for gasless UX
-- Handles conversion rate calculation
+**POST /orders/smart-sell**
+```json
+// Request
+{ "amountUsdc": "100", "targetRate": "26000", "bankAccountId": 1 }
 
-```typescript
-interface ConversionService {
-  convertVndToUsdc(vndAmount: number): Promise<ConversionResult>;
-  convertUsdcToVnd(usdcAmount: number): Promise<ConversionResult>;
-  getConversionRate(): Promise<ExchangeRate>;
-  estimateOutput(input: number, direction: Direction): Promise<number>;
+// Response
+{
+  "orderId": "uuid",
+  "targetRate": "26000",
+  "fee": "0.002",
+  "comparison": {
+    "quickSellVnd": "2487500",
+    "smartSellVnd": "2594800",
+    "savings": "107300"
+  }
 }
 ```
 
-**KycVerificationService**
-- Integrates with eKYC provider (3rd-party)
-- Manages ID capture and verification
-- Handles liveness checks
-- Stores KYC status (backend or on-chain)
+### Error Codes
 
-```typescript
-interface KycService {
-  startVerification(): Promise<void>;
-  submitIdData(idDocument: Image, livenessSelfie: Image): Promise<void>;
-  getVerificationStatus(): Promise<KycStatus>;
-}
-```
+`INVALID_TOKEN`, `KYC_REQUIRED`, `LOCATION_REQUIRED`, `INSUFFICIENT_BALANCE`, `INSUFFICIENT_LIQUIDITY`, `ORDER_NOT_FOUND`, `RATE_EXPIRED`, `TARGET_RATE_OUT_OF_RANGE`
 
-**LocationService**
-- GPS location permissions and access
-- Validates user is within Da Nang boundary
-- Handles location caching and updates
+---
 
-```typescript
-interface LocationService {
-  requestPermission(): Promise<boolean>;
-  getCurrentLocation(): Promise<Coordinates>;
-  isInDaNang(coords: Coordinates): boolean;
-  monitorLocationChanges(callback: (coords: Coordinates) => void): void;
-}
-```
+## Smart Contracts (Move)
 
-**PriceOracleService**
-- Fetches VND/USDC price from custom oracle
-- Handles price caching and refresh
-- Calculates conversion amounts with slippage
+### Module: escrow.move
 
-```typescript
-interface PriceOracleService {
-  getVndUsdcPrice(): Promise<number>;
-  getHistoricalPrices(days: number): Promise<Price[]>;
-  calculateOutput(input: number, slippage: number): Promise<number>;
-}
-```
-
-### 3. Smart Contract Layer
-
-**Location**: `/contracts/sources/`
-
-**Network**: Sui Mainnet
-
-#### Core Contracts
-
-**vnd_usdc.move** - Conversion Logic
-- Handles VND → USDC swap execution
-- Handles USDC → VND swap execution
-- Manages conversion request queue
-- Emits conversion events for tracking
+Lock USDC for Smart Sell orders.
 
 ```move
-public struct ConversionRequest has store {
+struct Escrow has key, store {
     id: UID,
-    user: address,
-    from_amount: u64,
-    from_currency: u8,  // 0 = VND, 1 = USDC
-    rate: u64,
-    status: u8,  // 0 = pending, 1 = completed, 2 = failed
-    timestamp: u64
+    owner: address,
+    usdc_balance: Coin<USDC>,
+    target_rate: u64,
+    bank_account_id: u64,
+    created_at: u64,
 }
 
-public fun convert_vnd_to_usdc(
-    from_amount: u64,
-    rate: u64
-): ConversionResult
+// User functions
+public entry fun create_escrow(usdc, target_rate, bank_account_id, ctx)
+public entry fun cancel_escrow(escrow, ctx)
+
+// Admin functions (reads oracle for rate validation)
+public entry fun execute_escrow(admin_cap, escrow, oracle, clock, recipient, ctx) {
+    let current_rate = price_oracle::get_sell_rate(oracle, clock);
+    assert!(current_rate >= escrow.target_rate, E_RATE_NOT_MET);
+    // ... transfer USDC
+}
+public entry fun partial_fill(admin_cap, escrow, fill_amount, recipient, ctx)
 ```
 
-**oracle.move** - Price Oracle
-- Maintains VND/USDC price feed
-- Updates prices (admin function)
-- Provides price lookup with timestamp
-- Handles multiple data sources (eventual multi-oracle design)
+### Module: liquidity_pool.move
+
+Platform-funded USDC reserve (MVP). External LP support planned for post-MVP.
 
 ```move
-public struct PriceFeed has key {
+struct LiquidityPool has key {
     id: UID,
-    vnd_price_per_usdc: u64,  // VND per 1 USDC
-    timestamp: u64,
-    source: vector<u8>
+    usdc_reserve: Balance<USDC>,
+    total_volume: u64,
+    is_active: bool,
 }
 
-public fun get_current_price(feed: &PriceFeed): u64
+// Admin functions (platform only for MVP)
+public entry fun add_liquidity(admin_cap, pool, usdc, ctx)
+public entry fun withdraw_liquidity(admin_cap, pool, amount, recipient, ctx)
+
+// Swap functions
+public entry fun dispense_usdc(admin_cap, pool, amount, recipient, ctx)  // Buy
+public entry fun deposit_usdc(pool, usdc, ctx)  // Quick Sell
 ```
 
-**sponsored_txn.move** - Gasless Transactions
-- Wraps conversion requests with sponsored tx metadata
-- Handles fee calculation and payment
-- Integrates with Sui sponsor protocol
-- Ensures app covers gas fees for users
+### Module: price_oracle.move
+
+On-chain VND/USDC rate oracle with bid/ask spread.
 
 ```move
-public struct SponsoredTransaction has store {
+const MAX_STALENESS_MS: u64 = 600_000; // 10 min
+
+struct PriceOracle has key {
     id: UID,
-    inner_tx: ConversionRequest,
-    sponsor: address,
-    max_gas_budget: u64,
-    gas_price: u64
+    buy_rate: u64,          // User buys USDC at this rate (higher)
+    sell_rate: u64,         // User sells USDC at this rate (lower)
+    mid_rate: u64,          // Market mid-point reference
+    spread_bps: u64,        // Spread in basis points (e.g., 50 = 0.5%)
+    last_updated: u64,      // Timestamp ms
+    source: String,
 }
 
-public fun create_sponsored_conversion(
-    request: ConversionRequest,
-    sponsor: address,
-    gas_budget: u64
-): SponsoredTransaction
-```
+// Admin updates (backend fetches mid-rate, calculates spread)
+public entry fun update_rates(admin, oracle, mid_rate, spread_bps, clock, ctx)
 
-**zklogin.move** - Authentication Wrapper
-- Integrates Sui's native zkLogin
-- Manages user identifiers (UID from OAuth)
-- Links OAuth identities to wallet addresses
-- Handles account recovery flows
-
-```move
-public struct ZkLoginUser has store {
-    id: UID,
-    oauth_provider: vector<u8>,  // "google" or "apple"
-    oauth_uid: vector<u8>,
-    wallet_address: address,
-    created_at: u64
+// Public read with staleness check
+public fun get_buy_rate(oracle: &PriceOracle, clock: &Clock): u64 {
+    assert!(clock.timestamp_ms() - oracle.last_updated < MAX_STALENESS_MS, E_STALE);
+    oracle.buy_rate
 }
-
-public fun link_oauth_identity(
-    provider: vector<u8>,
-    uid: vector<u8>,
-    wallet_address: address
-): ZkLoginUser
+public fun get_sell_rate(oracle: &PriceOracle, clock: &Clock): u64 {
+    assert!(clock.timestamp_ms() - oracle.last_updated < MAX_STALENESS_MS, E_STALE);
+    oracle.sell_rate
+}
 ```
 
-### 4. Data Flow Architecture
-
-#### Conversion Flow (VND → USDC)
-
+**Rate Calculation:**
 ```
-User Input
-    ↓
-[ConversionScreen]
-    ↓ vndAmount: 1,000,000
-[ConversionService.convertVndToUsdc()]
-    ↓
-├─ Call PriceOracleService.getVndUsdcPrice()
-│   └─ Query oracle.move contract → current rate
-│
-├─ Calculate output: 1,000,000 / rate = ~40 USDC
-│
-└─ Create conversion request
-    ↓
-[Sui Smart Contract: vnd_usdc.move]
-    ↓
-├─ Verify user KYC status (if stored on-chain)
-├─ Verify user location (if validated on-chain)
-├─ Execute conversion (burn VND, mint USDC equivalent)
-├─ Create ConversionRequest record
-└─ Emit ConversionCompleted event
-    ↓
-[Mobile App receives event]
-    ↓
-├─ Update wallet balance
-├─ Record transaction in history
-└─ Show success confirmation
+mid_rate = 25,000 VND/USDC (from Binance)
+spread = 0.5% (50 bps)
 
-Timeline: 1-3 seconds for on-chain execution
+buy_rate  = 25,000 × 1.0025 = 25,062.50 VND  (user pays more)
+sell_rate = 25,000 × 0.9975 = 24,937.50 VND  (user receives less)
 ```
 
-#### Transaction Flow (Send USDC)
+**MVP:** On-chain oracle. Backend fetches Binance mid-rate, updates oracle every 5 min.
+**Contracts read rates directly from oracle (trustless).**
 
-```
-User Input: Send 10 USDC to address
-    ↓
-[WalletScreen → SendModal]
-    ↓
-[SuiWalletService.sendTransaction()]
-    ↓
-├─ Validate recipient address
-├─ Check sender balance
-├─ Build transaction (USDC transfer)
-├─ Apply sponsored transaction wrapper
-│   └─ App pays gas fees
-└─ Submit to Sui network
-    ↓
-[Sui Blockchain]
-    ↓
-├─ Verify sponsor authorization
-├─ Execute USDC transfer
-└─ Emit Transfer event
-    ↓
-[Mobile App: Listen to events]
-    ↓
-├─ Poll transaction status
-├─ Update balance once confirmed
-└─ Show confirmation
+### Function Access Matrix
 
-Timeline: 3-5 seconds for confirmation
-```
+| Module | Function | Access |
+|--------|----------|--------|
+| escrow | create_escrow | Public |
+| escrow | cancel_escrow | Owner |
+| escrow | execute_escrow | Admin |
+| escrow | partial_fill | Admin |
+| liquidity_pool | add_liquidity | Admin |
+| liquidity_pool | withdraw_liquidity | Admin |
+| liquidity_pool | dispense_usdc | Admin |
+| liquidity_pool | deposit_usdc | Public |
+| price_oracle | update_price | Admin |
+| price_oracle | get_rate | Public |
 
-#### Authentication Flow (zkLogin)
+---
 
-```
-User taps "Sign in with Google/Apple"
-    ↓
-[LoginScreen]
-    ↓
-[SuiWalletService.initiateZkLogin()]
-    ↓
-├─ Redirect to OAuth provider (Google/Apple)
-│   └─ User grants permission
-│
-├─ Receive OAuth token/UID
-└─ Send to Sui's zkLogin proving service
-    ↓
-[Sui zkLogin Service]
-    ↓
-├─ Verify JWT signature
-├─ Generate zero-knowledge proof
-└─ Return zkLogin wallet address
-    ↓
-[Mobile App]
-    ↓
-├─ Store wallet address in secure storage
-├─ Link to backend user profile (via KycService)
-└─ Navigate to main wallet
+## Core Flows
 
-Timeline: 5-10 seconds (includes user interaction)
+### Buy USDC (VND -> USDC)
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant B as Backend
+    participant SP as SePay
+    participant S as Sui
+
+    U->>B: POST /orders/buy
+    B->>B: Generate VietQR
+    B-->>U: { qrCode, reference }
+    U->>SP: Bank transfer via QR
+    SP->>B: Webhook (payment received)
+    B->>S: dispense_usdc(amount, user)
+    S-->>U: USDC credited
 ```
 
-### 5. External Integrations
+### Quick Sell (Instant)
 
-#### OAuth Providers
-- **Google** - Sign in with Google
-- **Apple** - Sign in with Apple
-- Handled by Sui's native zkLogin system
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant B as Backend
+    participant S as Sui
+    participant SP as SePay
 
-#### eKYC Provider
-- 3rd-party service (vendor TBD)
-- APIs for:
-  - ID document verification
-  - Liveness detection
-  - Result callbacks to mobile app
-- KYC status stored locally and/or on-chain
+    U->>B: POST /orders/quick-sell
+    B-->>U: { orderId, txToSign }
+    U->>S: deposit_usdc(amount)
+    S-->>U: tx_hash
+    U->>B: POST /orders/:id/confirm { txHash }
+    B->>S: Verify tx confirmed
+    S-->>B: Confirmed
+    B->>SP: POST /disbursement
+    SP-->>U: VND to bank
+```
 
-#### Location Services
-- Device GPS via React Native
-- Geographic validation (Da Nang boundary check)
-- Privacy-first: location used only for validation
+**CRITICAL:** Backend MUST verify tx confirmed on-chain BEFORE calling disbursement.
 
-#### Sui Network
-- JSON-RPC endpoint for transaction submission
-- Event subscription for status updates
-- Price oracle data for VND/USDC rates
+### Smart Sell (Target Rate)
 
-#### USDC Token
-- Native USDC contract on Sui Mainnet
-- Standard Sui token contract interface
-- All conversions settle in native USDC
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant B as Backend
+    participant S as Sui
+    participant SP as SePay
 
-### 6. State Management
+    U->>B: POST /orders/smart-sell
+    U->>S: create_escrow(usdc, target_rate)
 
-**Local Storage**:
-- User wallet address
-- OAuth token (secure storage)
-- Transaction cache
-- Recent prices cache
+    loop Every 5 min
+        B->>B: Check rate vs target
+    end
 
-**Backend/On-chain** (TBD):
-- KYC verification status
-- Location verification history
-- Conversion request history
-- User profile data
+    B->>S: execute_escrow (rate hit)
+    B->>SP: POST /disbursement
+    SP-->>U: VND to bank
+```
 
-**Blockchain State**:
-- Conversion records (for auditing)
-- Price feed updates
-- User balances (via token contract)
+---
 
-### 7. Security Architecture
+## Integrations
 
-#### Authentication
-- OAuth via zkLogin (no seed phrases exposed)
-- Wallet address derived from OAuth identity
-- Zero-knowledge proofs prevent service from knowing user identity
+### SePay
 
-#### Authorization
-- KYC verification required for VND features
-- Location check required for Da Nang users
-- On-chain state validation before conversions
+- **VietQR**: `https://qr.sepay.vn` - Generate payment QR
+- **Webhook**: `POST /webhooks/sepay` - Payment notification (~10s latency)
+- **Disbursement**: `POST /disbursement` - Send VND to bank
 
-#### Transaction Security
-- Sponsored transactions signed by app keypair
-- User transaction data not exposed to app
-- All critical operations logged
+**Webhook Verification**: HMAC-SHA256 signature in `X-Sepay-Signature` header.
 
-#### Data Protection
-- Sensitive data in secure storage (OAuth tokens)
-- API calls over HTTPS only
-- No hardcoded secrets
-- Environment-based configuration
+### Sui RPC
 
-### 8. Scalability Considerations
+```typescript
+// Core methods
+suiClient.getCoins({ owner, coinType: USDC_TYPE })
+suiClient.executeTransactionBlock({ transactionBlock, signature })
+suiClient.getLatestSuiSystemState()  // Current epoch
+```
 
-**Current Design**:
-- Single app instance
-- Direct Sui RPC calls (no indexer yet)
-- In-memory caching
+### zkLogin
 
-**Future Scaling**:
-- Backend service for KYC/location caching
-- Sui indexer for transaction history
-- Price oracle aggregation from multiple sources
-- Rate limiting and queue management
+1. Generate ephemeral key + nonce
+2. Redirect to Google OAuth
+3. Receive JWT, derive Sui address via `jwtToAddress(jwt, salt)`
+4. Session valid ~10 days (10 epochs)
+5. Re-login required after expiry (no silent refresh for MVP)
 
-## Technology Stack Rationale
+---
 
-| Component | Technology | Why |
-|-----------|-----------|-----|
-| Mobile | React Native + Expo | Cross-platform (iOS/Android), rapid development |
-| Blockchain | Sui Move | Smart contract language, efficient, safe |
-| Auth | zkLogin | Seedless, OAuth-native, mainstream-friendly |
-| VND Oracle | Custom contract | Pyth/Supra don't support VND |
-| Sponsored TX | Sui native | Built-in feature, gasless UX |
+## Architecture Decisions
 
-## Performance Targets
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| Liquidity Model | Platform-funded (MVP) | KISS, external LP post-MVP |
+| Escrow ↔ Pool | Separate (no integration) | KISS |
+| Price Oracle | On-chain (MVP) | Trustless, contracts read directly |
+| Redis | Railway addon | Same platform |
+| Session Expiry | Re-login | Skip refresh complexity |
+| Disbursement Fail | Manual review flag | Safety |
+| Bank Account PII | Encrypted (bytea) | Security |
 
-| Operation | Target | Notes |
-|-----------|--------|-------|
-| App startup | < 3s | First screen visible |
-| Wallet balance fetch | < 1s | RPC query |
-| Conversion execute | < 3s | Smart contract execution |
-| Transaction confirm | < 5s | Sui consensus |
-| Login | < 10s | OAuth + zkLogin proof |
+---
 
-## Known Limitations (Phase 1)
+## Security
 
-- VND deposit: Manual bank transfer only (no integration)
-- Location: GPS only, no cell tower fallback
-- Oracle: Single price source (centralized risk)
-- KYC: 3rd-party provider TBD
-- Blockchain: Sui Testnet initially, Mainnet for production
+### Boundaries
+
+```
+PUBLIC ZONE
+├── Mobile app
+└── OAuth endpoints
+
+DMZ (API Gateway)
+├── Rate limiting (50 req/min/user)
+├── JWT validation
+└── Webhook signature verification
+
+PRIVATE ZONE
+├── Supabase (RLS enforced)
+├── Redis (internal network)
+└── Sui RPC (authenticated)
+```
+
+### Data Protection
+
+- Bank account numbers encrypted at rest
+- RLS policies on all user tables
+- Webhook signature verification (HMAC-SHA256)
+- No plaintext PII in logs
+
+---
+
+## User Stories Coverage
+
+| US | Feature | Components |
+|----|---------|------------|
+| US-01 | zkLogin | Mobile + Backend Auth |
+| US-02 | Mock KYC | Backend + Supabase |
+| US-03 | Location | Mobile GPS |
+| US-04 | Balance | Mobile + Sui RPC |
+| US-05 | History | Backend + Supabase |
+| US-06 | Buy USDC | SePay + Backend + Sui |
+| US-07 | Quick Sell | LiquidityPool + SePay |
+| US-08 | Smart Sell | Escrow + SePay |
+| US-09 | Navigation | Mobile UI |
+| US-10 | Errors | Mobile + Backend |
+| US-11 | i18n | Mobile |
+| US-12 | Bank Accounts | Backend + Supabase |
+
+---
+
+## Deployment
+
+```
+Mobile: EAS Build → Expo Go (dev) / APK (demo)
+Backend: Railway (NestJS + Redis)
+Database: Supabase (free tier)
+Contracts: Sui Testnet
+```
+
+---
+
+## References
+
+- [User Stories](./user-stories.md)
+- [Requirements Scope](./requirements-scope.md)
+- [Sui zkLogin Docs](https://docs.sui.io/concepts/cryptography/zklogin)
+- [SePay API](https://sepay.vn/docs)
