@@ -27,6 +27,13 @@
 | 2026-01-31 | Claude Code | app/src/components/error/*.tsx | Created NetworkError, InlineError, ErrorBoundary components |
 | 2026-01-31 | Claude Code | app/src/utils/format-*.ts | Created currency and date formatting utilities |
 | 2026-01-31 | Claude Code | app/app/(tabs)/settings.tsx | Integrated i18n language toggle with persistence |
+| 2026-01-31 | Claude Code | contracts/Move.toml | Created Move project config with Sui testnet framework |
+| 2026-01-31 | Claude Code | contracts/sources/admin_cap.move | Created AdminCap capability pattern for access control |
+| 2026-01-31 | Claude Code | contracts/sources/price_oracle.move | Created VND/USDC on-chain oracle with staleness check |
+| 2026-01-31 | Claude Code | contracts/sources/liquidity_pool.move | Created platform USDC reserve with add/dispense/deposit |
+| 2026-01-31 | Claude Code | contracts/sources/escrow.move | Created Smart Sell escrow with target rate execution |
+| 2026-01-31 | Claude Code | contracts/tests/suigate_tests.move | Created 11 integration tests covering all modules |
+| 2026-01-31 | Claude Code | contracts/DEPLOYMENT.md | Documented testnet deployment (Package ID, Object IDs) |
 
 ## Guidelines
 
