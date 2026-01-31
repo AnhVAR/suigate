@@ -1,5 +1,6 @@
-import { Stack } from 'expo-router';
+import '../global.css';
 import { useEffect } from 'react';
+import { Stack } from 'expo-router';
 import { useAuthStore } from '../src/stores/authentication-store';
 
 export default function RootLayout() {
@@ -7,7 +8,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     checkAuth();
-  }, []);
+  }, [checkAuth]);
 
   return (
     <Stack screenOptions={{ headerShown: false }}>

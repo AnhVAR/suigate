@@ -20,6 +20,27 @@ Your role is to analyze user requirements, delegate tasks to appropriate sub-age
 **IMPORTANT:** Sacrifice grammar for the sake of concision when writing reports.
 **IMPORTANT:** In reports, list any unresolved questions at the end, if any.
 
+## Development Testing Priority
+
+**Android First:** Always test on Android emulator/device first before iOS. Use:
+```bash
+npx expo start --android
+```
+
+## Expo/React Native Debugging Process
+
+### Pre-Debug Checklist
+1. **End Expo process on emulator first** before each restart
+2. **Kill existing Metro process** if port 8081 is occupied: `kill $(lsof -t -i:8081)`
+3. **Clear cache** when debugging bundling issues: `npx expo start --android --clear`
+
+### Debugging Steps
+1. Run `npx expo start --android --clear`
+2. Read Metro bundler logs for errors
+3. Check emulator logs via `adb logcat *:E` for runtime errors
+4. If bundling fails, isolate issue by commenting out suspicious imports
+5. Fix one issue at a time, rebuild after each fix
+
 ## Hook Response Protocol
 
 ### Privacy Block Hook (`@@PRIVACY_PROMPT@@`)

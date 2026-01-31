@@ -20,7 +20,17 @@
     "type": "git",
     "url": "https://github.com/user/suigate.git"
   },
-  "keywords": ["sui", "wallet", "usdc", "vnd", "expo"],
+  "keywords": [
+    "sui",
+    "wallet",
+    "usdc",
+    "vnd",
+    "expo"
+  ],
   "author": "",
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "@types/react": "~19.1.10",
+    "typescript": "~5.9.2"
+  }
 }
