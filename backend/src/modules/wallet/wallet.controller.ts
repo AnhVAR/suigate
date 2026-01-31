@@ -1,13 +1,15 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, UseGuards, Request } from '@nestjs/common';
 import { WalletService } from './wallet.service';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { WalletBalanceDto } from './dto/wallet-balance.dto';
 
 @Controller('wallet')
+@UseGuards(JwtAuthGuard)
 export class WalletController {
-  constructor(private readonly walletService: WalletService) {}
+  constructor(private walletService: WalletService) {}
 
   @Get('balance')
-  async getBalance() {
-    // TODO: Implement wallet balance retrieval
-    return this.walletService.getBalance();
+  async getBalance(@Request() req): Promise<WalletBalanceDto> {
+    return this.walletService.getBalance(req.user.suiAddress);
   }
 }
