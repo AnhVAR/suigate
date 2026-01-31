@@ -49,6 +49,7 @@ export default function WalletScreen() {
           <BalanceCard
             usdcBalance={usdcBalance}
             vndEquivalent={vndEquivalent}
+            walletAddress={suiAddress || undefined}
             isLoading={isLoading}
             onRefresh={handleRefresh}
           />
@@ -80,14 +81,6 @@ export default function WalletScreen() {
         {/* Recent Transactions */}
         <View style={styles.section}>
           <RecentTransactionsList transactions={[]} isLoading={isLoading} />
-        </View>
-
-        {/* Address Display */}
-        <View style={styles.addressCard}>
-          <Text style={styles.addressLabel}>Wallet Address</Text>
-          <Text style={styles.addressText} numberOfLines={1} ellipsizeMode="middle">
-            {suiAddress}
-          </Text>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -157,20 +150,5 @@ const styles = StyleSheet.create({
   warningText: {
     color: '#4b5563',
     fontSize: 14,
-  },
-  addressCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 12,
-    padding: 16,
-  },
-  addressLabel: {
-    color: '#6b7280',
-    fontSize: 14,
-    marginBottom: 4,
-  },
-  addressText: {
-    color: '#1f2937',
-    fontSize: 12,
-    fontFamily: 'monospace',
   },
 });

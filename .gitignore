@@ -112,4 +112,5 @@ contracts/build/
 *.log
 
 # Test
-.nyc_output/
+.nyc_output/.expo/
+.expo/
