@@ -1,13 +1,15 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, UseGuards } from '@nestjs/common';
 import { RatesService } from './rates.service';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RatesResponseDto } from './dto/exchange-rates.dto';
 
 @Controller('rates')
 export class RatesController {
-  constructor(private readonly ratesService: RatesService) {}
+  constructor(private ratesService: RatesService) {}
 
   @Get('current')
-  async getCurrentRates() {
-    // TODO: Implement current exchange rates retrieval
+  @UseGuards(JwtAuthGuard)
+  async getCurrentRates(): Promise<RatesResponseDto> {
     return this.ratesService.getCurrentRates();
   }
 }
