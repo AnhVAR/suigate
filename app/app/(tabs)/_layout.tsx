@@ -27,11 +27,7 @@ export default function TabLayout() {
         options={{
           title: 'Wallet',
           tabBarIcon: ({ color, size }) => (
-            <MaterialIcons
-              name="account-balance-wallet"
-              size={size}
-              color={color}
-            />
+            <MaterialIcons name="account-balance-wallet" size={size} color={color} />
           ),
         }}
       />
@@ -50,6 +46,15 @@ export default function TabLayout() {
           title: 'History',
           tabBarIcon: ({ color, size }) => (
             <MaterialIcons name="history" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="settings"
+        options={{
+          title: 'Settings',
+          tabBarIcon: ({ color, size }) => (
+            <MaterialIcons name="settings" size={size} color={color} />
           ),
         }}
       />

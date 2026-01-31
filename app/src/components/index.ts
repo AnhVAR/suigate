@@ -25,3 +25,13 @@ export { RateDisplay } from './trading/rate-display';
 export { BankAccountPicker } from './trading/bank-account-picker';
 export { VietQRPaymentDisplay } from './trading/vietqr-payment-display';
 export { FeeComparisonCard } from './trading/fee-comparison-card';
+
+// History
+export { TransactionFilterTabs } from './history/transaction-filter-tabs';
+export { TransactionListItem } from './history/transaction-list-item';
+export { SmartSellProgress } from './history/smart-sell-progress';
+
+// Settings
+export { SettingsSection, SettingsItem } from './settings/settings-section';
+export { BankAccountForm } from './settings/bank-account-form';
+export { BankAccountList } from './settings/bank-account-list';
