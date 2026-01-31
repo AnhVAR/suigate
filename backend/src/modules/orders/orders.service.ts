@@ -1,24 +1,312 @@
-import { Injectable } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  Logger,
+} from '@nestjs/common';
+import { SupabaseService } from '../../common/supabase/supabase.service';
+import { SuiClientService } from '../../common/sui/sui-client.service';
+import { RatesService } from '../rates/rates.service';
+import { VietQrService } from './vietqr-generator.service';
+import {
+  CreateBuyOrderDto,
+  BuyOrderResponseDto,
+  CreateQuickSellOrderDto,
+  QuickSellOrderResponseDto,
+  CreateSmartSellOrderDto,
+  SmartSellOrderResponseDto,
+  ConfirmOrderDto,
+  OrderDto,
+  OrderListResponseDto,
+} from './dto/order-types.dto';
+
+const ORDER_EXPIRY_MINUTES = 15;
 
 @Injectable()
 export class OrdersService {
-  async createBuyOrder(data: any) {
-    // TODO: Implement buy order logic
-    return { message: 'Create buy order - to be implemented' };
+  private readonly logger = new Logger(OrdersService.name);
+
+  constructor(
+    private supabase: SupabaseService,
+    private suiClient: SuiClientService,
+    private ratesService: RatesService,
+    private vietQrService: VietQrService,
+  ) {}
+
+  async createBuyOrder(
+    userId: string,
+    dto: CreateBuyOrderDto,
+  ): Promise<BuyOrderResponseDto> {
+    const rates = await this.ratesService.getCurrentRates();
+    const amountUsdc = dto.amountVnd / rates.buyRate;
+    const reference = this.vietQrService.generateReference();
+    const expiresAt = new Date(Date.now() + ORDER_EXPIRY_MINUTES * 60 * 1000);
+
+    const { data, error } = await this.supabase
+      .getClient()
+      .from('orders')
+      .insert({
+        user_id: userId,
+        order_type: 'buy',
+        amount_vnd: dto.amountVnd,
+        amount_usdc: amountUsdc,
+        rate: rates.buyRate,
+        status: 'pending',
+        sepay_reference: reference,
+        expires_at: expiresAt.toISOString(),
+      })
+      .select()
+      .single();
+
+    if (error) {
+      this.logger.error('Failed to create buy order', error);
+      throw new Error('Failed to create order');
+    }
+
+    const qrCode = this.vietQrService.generateQrContent(
+      dto.amountVnd,
+      reference,
+    );
+
+    return {
+      orderId: data.id,
+      amountVnd: dto.amountVnd,
+      amountUsdc: amountUsdc.toFixed(6),
+      rate: rates.buyRate,
+      qrCode,
+      reference,
+      expiresAt: expiresAt.toISOString(),
+    };
   }
 
-  async createQuickSellOrder(data: any) {
-    // TODO: Implement quick sell order logic
-    return { message: 'Create quick sell order - to be implemented' };
+  async createQuickSellOrder(
+    userId: string,
+    dto: CreateQuickSellOrderDto,
+  ): Promise<QuickSellOrderResponseDto> {
+    // Verify bank account belongs to user
+    await this.verifyBankAccount(userId, dto.bankAccountId);
+
+    const rates = await this.ratesService.getCurrentRates();
+    const amountUsdc = parseFloat(dto.amountUsdc);
+    const amountVnd = amountUsdc * rates.sellRate;
+
+    const { data, error } = await this.supabase
+      .getClient()
+      .from('orders')
+      .insert({
+        user_id: userId,
+        bank_account_id: dto.bankAccountId,
+        order_type: 'quick_sell',
+        amount_vnd: amountVnd,
+        amount_usdc: amountUsdc,
+        rate: rates.sellRate,
+        status: 'pending',
+      })
+      .select()
+      .single();
+
+    if (error) {
+      this.logger.error('Failed to create quick sell order', error);
+      throw new Error('Failed to create order');
+    }
+
+    return {
+      orderId: data.id,
+      amountUsdc: dto.amountUsdc,
+      amountVnd: Math.round(amountVnd),
+      rate: rates.sellRate,
+      bankAccountId: dto.bankAccountId,
+      status: 'pending',
+    };
   }
 
-  async createSmartSellOrder(data: any) {
-    // TODO: Implement smart sell order logic
-    return { message: 'Create smart sell order - to be implemented' };
+  async createSmartSellOrder(
+    userId: string,
+    dto: CreateSmartSellOrderDto,
+  ): Promise<SmartSellOrderResponseDto> {
+    await this.verifyBankAccount(userId, dto.bankAccountId);
+
+    const rates = await this.ratesService.getCurrentRates();
+    const amountUsdc = parseFloat(dto.amountUsdc);
+
+    // Validate target rate (must be within 10% of current)
+    const maxRate = rates.sellRate * 1.1;
+    if (dto.targetRate > maxRate) {
+      throw new BadRequestException(
+        'Target rate too high (max 10% above current)',
+      );
+    }
+
+    const quickSellVnd = amountUsdc * rates.sellRate;
+    const smartSellVnd = amountUsdc * dto.targetRate;
+    const fee = amountUsdc * 0.002; // 0.2% fee
+
+    const { data, error } = await this.supabase
+      .getClient()
+      .from('orders')
+      .insert({
+        user_id: userId,
+        bank_account_id: dto.bankAccountId,
+        order_type: 'smart_sell',
+        amount_usdc: amountUsdc,
+        rate: rates.sellRate,
+        target_rate: dto.targetRate,
+        status: 'pending',
+      })
+      .select()
+      .single();
+
+    if (error) {
+      this.logger.error('Failed to create smart sell order', error);
+      throw new Error('Failed to create order');
+    }
+
+    return {
+      orderId: data.id,
+      amountUsdc: dto.amountUsdc,
+      targetRate: dto.targetRate,
+      currentRate: rates.sellRate,
+      fee: fee.toFixed(6),
+      comparison: {
+        quickSellVnd: Math.round(quickSellVnd),
+        smartSellVnd: Math.round(smartSellVnd - fee * dto.targetRate),
+        savings: Math.round(smartSellVnd - quickSellVnd),
+      },
+    };
   }
 
-  async getOrders() {
-    // TODO: Implement get orders logic
-    return { message: 'Get orders - to be implemented' };
+  async confirmOrder(
+    userId: string,
+    orderId: string,
+    dto: ConfirmOrderDto,
+  ): Promise<OrderDto> {
+    const order = await this.getOrderById(userId, orderId);
+
+    if (order.status !== 'pending') {
+      throw new BadRequestException('Order is not pending');
+    }
+
+    // Verify transaction on Sui
+    const isConfirmed = await this.suiClient.verifyTransaction(dto.txHash);
+    if (!isConfirmed) {
+      throw new BadRequestException('Transaction not confirmed on blockchain');
+    }
+
+    // Store transaction
+    await this.supabase.getClient().from('transactions').insert({
+      order_id: orderId,
+      tx_hash: dto.txHash,
+      tx_status: 'confirmed',
+    });
+
+    // Update order status
+    const { data, error } = await this.supabase
+      .getClient()
+      .from('orders')
+      .update({ status: 'processing', updated_at: new Date().toISOString() })
+      .eq('id', orderId)
+      .select()
+      .single();
+
+    if (error) throw new Error('Failed to update order');
+
+    return this.mapOrderToDto(data);
+  }
+
+  async cancelOrder(userId: string, orderId: string): Promise<OrderDto> {
+    const order = await this.getOrderById(userId, orderId);
+
+    if (order.orderType !== 'smart_sell') {
+      throw new BadRequestException('Only smart sell orders can be cancelled');
+    }
+
+    if (order.status !== 'pending') {
+      throw new BadRequestException('Order cannot be cancelled');
+    }
+
+    const { data, error } = await this.supabase
+      .getClient()
+      .from('orders')
+      .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+      .eq('id', orderId)
+      .select()
+      .single();
+
+    if (error) throw new Error('Failed to cancel order');
+
+    return this.mapOrderToDto(data);
+  }
+
+  async listOrders(userId: string): Promise<OrderListResponseDto> {
+    const { data, error, count } = await this.supabase
+      .getClient()
+      .from('orders')
+      .select('*', { count: 'exact' })
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    if (error) throw new Error('Failed to fetch orders');
+
+    return {
+      orders: (data || []).map((row) => this.mapOrderToDto(row)),
+      total: count || 0,
+    };
+  }
+
+  async getOrder(userId: string, orderId: string): Promise<OrderDto> {
+    return this.getOrderById(userId, orderId);
+  }
+
+  private async getOrderById(
+    userId: string,
+    orderId: string,
+  ): Promise<OrderDto> {
+    const { data, error } = await this.supabase
+      .getClient()
+      .from('orders')
+      .select('*')
+      .eq('id', orderId)
+      .eq('user_id', userId)
+      .single();
+
+    if (error || !data) {
+      throw new NotFoundException('Order not found');
+    }
+
+    return this.mapOrderToDto(data);
+  }
+
+  private async verifyBankAccount(
+    userId: string,
+    bankAccountId: number,
+  ): Promise<void> {
+    const { data } = await this.supabase
+      .getClient()
+      .from('bank_accounts')
+      .select('id')
+      .eq('id', bankAccountId)
+      .eq('user_id', userId)
+      .single();
+
+    if (!data) {
+      throw new BadRequestException('Bank account not found');
+    }
+  }
+
+  private mapOrderToDto(row: any): OrderDto {
+    return {
+      id: row.id,
+      orderType: row.order_type,
+      amountVnd: row.amount_vnd,
+      amountUsdc: row.amount_usdc?.toString() || null,
+      rate: row.rate,
+      targetRate: row.target_rate,
+      status: row.status,
+      sepayReference: row.sepay_reference,
+      escrowObjectId: row.escrow_object_id,
+      createdAt: row.created_at,
+      expiresAt: row.expires_at,
+    };
   }
 }

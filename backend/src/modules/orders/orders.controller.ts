@@ -1,31 +1,80 @@
-import { Controller, Post, Get, Body } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Delete,
+  Body,
+  Param,
+  UseGuards,
+  Request,
+} from '@nestjs/common';
 import { OrdersService } from './orders.service';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import {
+  CreateBuyOrderDto,
+  BuyOrderResponseDto,
+  CreateQuickSellOrderDto,
+  QuickSellOrderResponseDto,
+  CreateSmartSellOrderDto,
+  SmartSellOrderResponseDto,
+  ConfirmOrderDto,
+  OrderDto,
+  OrderListResponseDto,
+} from './dto/order-types.dto';
 
 @Controller('orders')
+@UseGuards(JwtAuthGuard)
 export class OrdersController {
-  constructor(private readonly ordersService: OrdersService) {}
+  constructor(private ordersService: OrdersService) {}
 
   @Post('buy')
-  async createBuyOrder(@Body() body: any) {
-    // TODO: Implement buy order creation
-    return this.ordersService.createBuyOrder(body);
+  async createBuyOrder(
+    @Request() req,
+    @Body() dto: CreateBuyOrderDto,
+  ): Promise<BuyOrderResponseDto> {
+    return this.ordersService.createBuyOrder(req.user.id, dto);
   }
 
   @Post('quick-sell')
-  async createQuickSellOrder(@Body() body: any) {
-    // TODO: Implement quick sell order
-    return this.ordersService.createQuickSellOrder(body);
+  async createQuickSellOrder(
+    @Request() req,
+    @Body() dto: CreateQuickSellOrderDto,
+  ): Promise<QuickSellOrderResponseDto> {
+    return this.ordersService.createQuickSellOrder(req.user.id, dto);
   }
 
   @Post('smart-sell')
-  async createSmartSellOrder(@Body() body: any) {
-    // TODO: Implement smart sell order
-    return this.ordersService.createSmartSellOrder(body);
+  async createSmartSellOrder(
+    @Request() req,
+    @Body() dto: CreateSmartSellOrderDto,
+  ): Promise<SmartSellOrderResponseDto> {
+    return this.ordersService.createSmartSellOrder(req.user.id, dto);
   }
 
   @Get()
-  async getOrders() {
-    // TODO: Implement get user orders
-    return this.ordersService.getOrders();
+  async listOrders(@Request() req): Promise<OrderListResponseDto> {
+    return this.ordersService.listOrders(req.user.id);
+  }
+
+  @Get(':id')
+  async getOrder(@Request() req, @Param('id') id: string): Promise<OrderDto> {
+    return this.ordersService.getOrder(req.user.id, id);
+  }
+
+  @Post(':id/confirm')
+  async confirmOrder(
+    @Request() req,
+    @Param('id') id: string,
+    @Body() dto: ConfirmOrderDto,
+  ): Promise<OrderDto> {
+    return this.ordersService.confirmOrder(req.user.id, id, dto);
+  }
+
+  @Delete(':id')
+  async cancelOrder(
+    @Request() req,
+    @Param('id') id: string,
+  ): Promise<OrderDto> {
+    return this.ordersService.cancelOrder(req.user.id, id);
   }
 }
