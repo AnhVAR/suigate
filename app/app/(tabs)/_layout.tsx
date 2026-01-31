@@ -5,9 +5,21 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        headerShown: true,
-        tabBarActiveTintColor: '#007AFF',
-        tabBarInactiveTintColor: '#8E8E93',
+        headerShown: false,
+        tabBarActiveTintColor: '#8b5cf6',
+        tabBarInactiveTintColor: '#9ca3af',
+        tabBarStyle: {
+          height: 84,
+          paddingTop: 8,
+          paddingBottom: 28,
+          backgroundColor: '#ffffff',
+          borderTopWidth: 1,
+          borderTopColor: '#f3f4f6',
+        },
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontWeight: '500',
+        },
       }}
     >
       <Tabs.Screen
@@ -15,7 +27,11 @@ export default function TabLayout() {
         options={{
           title: 'Wallet',
           tabBarIcon: ({ color, size }) => (
-            <MaterialIcons name="account-balance-wallet" size={size} color={color} />
+            <MaterialIcons
+              name="account-balance-wallet"
+              size={size}
+              color={color}
+            />
           ),
         }}
       />
