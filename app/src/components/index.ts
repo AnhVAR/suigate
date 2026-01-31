@@ -19,3 +19,9 @@ export { LoadingSpinner } from './feedback/loading-spinner';
 export { BalanceCard } from './wallet/balance-card';
 export { QuickActionsGrid } from './wallet/quick-actions-grid';
 export { RecentTransactionsList } from './wallet/recent-transactions-list';
+
+// Trading
+export { RateDisplay } from './trading/rate-display';
+export { BankAccountPicker } from './trading/bank-account-picker';
+export { VietQRPaymentDisplay } from './trading/vietqr-payment-display';
+export { FeeComparisonCard } from './trading/fee-comparison-card';
