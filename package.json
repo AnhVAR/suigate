@@ -4,6 +4,7 @@
   "private": true,
   "description": "Mobile wallet for VND-USDC conversion on Sui",
   "workspaces": [
+    "packages/*",
     "app",
     "backend"
   ],
