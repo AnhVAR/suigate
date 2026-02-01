@@ -16,14 +16,14 @@ export default function WalletScreen() {
 
   useEffect(() => {
     if (suiAddress) {
-      fetchBalance(suiAddress);
+      fetchBalance();
     }
-  }, [suiAddress]);
+  }, [suiAddress, fetchBalance]);
 
   const handleRefresh = async () => {
     if (!suiAddress) return;
     setIsRefreshing(true);
-    await fetchBalance(suiAddress);
+    await fetchBalance();
     setIsRefreshing(false);
   };
 
