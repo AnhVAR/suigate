@@ -99,9 +99,11 @@ app/web-build/
 backend/node_modules/
 backend/dist/
 backend/coverage/
+backend/supabase/.temp/
 
 # Contracts (Move)
 contracts/build/
+*.bak
 
 # IDE
 .idea/

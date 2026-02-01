@@ -29,9 +29,11 @@
 0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC
 ```
 
+| **LiquidityPool** | Shared | `0x4abfd52ee4a3f5379bc74c46851370edd93f240afe7c9c04d31fd77b8ee81e29` |
+
 ## Next Steps
 
-1. Create USDC LiquidityPool via `liquidity_pool::create_pool<USDC>`
+1. ~~Create USDC LiquidityPool via `liquidity_pool::create_pool<USDC>`~~ ✅ Done
 2. Update PriceOracle with VND/USDC rates via `price_oracle::update_rates`
 3. Integrate with backend API
 
