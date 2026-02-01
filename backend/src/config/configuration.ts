@@ -9,10 +9,15 @@ export default () => ({
     key: process.env.DB_ENCRYPTION_KEY,
   },
   sui: {
-    rpcUrl: process.env.SUI_RPC_URL || 'https://fullnode.mainnet.sui.io',
+    rpcUrl: process.env.SUI_RPC_URL || 'https://fullnode.testnet.sui.io',
+    packageId: process.env.SUI_PACKAGE_ID,
+    adminCapId: process.env.SUI_ADMIN_CAP_ID,
+    oracleId: process.env.SUI_ORACLE_ID,
+    poolId: process.env.SUI_POOL_ID,
     usdcType:
       process.env.SUI_USDC_TYPE ||
-      '0x5d4b302506645c37ff133b98c4b50a5ae14841659738d6d733d59d0d217a93bf::coin::COIN',
+      '0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC',
+    adminSecretKey: process.env.SUI_ADMIN_SECRET_KEY,
   },
   auth: {
     googleClientId: process.env.GOOGLE_CLIENT_ID,

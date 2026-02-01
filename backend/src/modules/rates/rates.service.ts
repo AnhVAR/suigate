@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { SupabaseService } from '../../common/supabase/supabase.service';
+import { SuiTransactionService } from '../../common/sui/sui-transaction.service';
 import { RatesResponseDto } from './dto/exchange-rates.dto';
 
 // CoinGecko API for VND rate (free, no auth needed)
@@ -17,8 +18,12 @@ export class RatesService implements OnModuleInit {
   private cache: CachedRate | null = null;
   private readonly CACHE_TTL = 60000; // 60 seconds
   private readonly logger = new Logger(RatesService.name);
+  private oracleSyncCount = 0; // Track calls to sync oracle every 5 minutes
 
-  constructor(private supabase: SupabaseService) {}
+  constructor(
+    private supabase: SupabaseService,
+    private suiTx: SuiTransactionService,
+  ) {}
 
   async onModuleInit() {
     await this.refreshRates();
@@ -62,6 +67,13 @@ export class RatesService implements OnModuleInit {
 
       // Store in database for history
       await this.storeRate(rates);
+
+      // Sync to on-chain oracle every 5 minutes (every 5th call)
+      this.oracleSyncCount++;
+      if (this.oracleSyncCount >= 5) {
+        this.oracleSyncCount = 0;
+        await this.syncOracleRates(rates);
+      }
 
       this.logger.log(
         `Rates refreshed: mid=${rates.midRate}, buy=${rates.buyRate}, sell=${rates.sellRate}`,
@@ -117,5 +129,24 @@ export class RatesService implements OnModuleInit {
       // Non-critical, just log
       this.logger.warn('Failed to store rate history', error);
     }
+  }
+
+  /** Update on-chain PriceOracle with current rates */
+  private async syncOracleRates(rates: RatesResponseDto): Promise<void> {
+    try {
+      const midRate = Math.round(rates.midRate);
+      const txDigest = await this.suiTx.updateOracleRates(midRate, SPREAD_BPS);
+      this.logger.log(`Oracle synced: midRate=${midRate}, tx=${txDigest}`);
+    } catch (error) {
+      this.logger.error('Failed to sync oracle rates', error);
+      // Non-critical for hackathon, just log
+    }
+  }
+
+  /** Manual trigger for testing oracle sync */
+  async triggerOracleSync(): Promise<string> {
+    const rates = await this.getCurrentRates();
+    await this.syncOracleRates(rates);
+    return `Oracle sync triggered: midRate=${Math.round(rates.midRate)}`;
   }
 }

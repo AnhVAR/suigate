@@ -70,6 +70,19 @@ export class OrdersController {
     return this.ordersService.confirmOrder(req.user.id, id, dto);
   }
 
+  @Post(':id/escrow')
+  async setEscrowObjectId(
+    @Request() req,
+    @Param('id') id: string,
+    @Body() dto: { escrowObjectId: string },
+  ): Promise<OrderDto> {
+    return this.ordersService.updateEscrowObjectId(
+      req.user.id,
+      id,
+      dto.escrowObjectId,
+    );
+  }
+
   @Delete(':id')
   async cancelOrder(
     @Request() req,

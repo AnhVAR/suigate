@@ -237,6 +237,35 @@ export class OrdersService {
     return this.mapOrderToDto(data);
   }
 
+  /** Store escrow object ID after mobile app creates on-chain escrow */
+  async updateEscrowObjectId(
+    userId: string,
+    orderId: string,
+    escrowObjectId: string,
+  ): Promise<OrderDto> {
+    const order = await this.getOrderById(userId, orderId);
+
+    if (order.orderType !== 'smart_sell') {
+      throw new BadRequestException('Only smart sell orders have escrow');
+    }
+
+    const { data, error } = await this.supabase
+      .getClient()
+      .from('orders')
+      .update({
+        escrow_object_id: escrowObjectId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', orderId)
+      .eq('user_id', userId)
+      .select()
+      .single();
+
+    if (error) throw new Error('Failed to update escrow object ID');
+
+    return this.mapOrderToDto(data);
+  }
+
   async listOrders(userId: string): Promise<OrderListResponseDto> {
     const { data, error, count } = await this.supabase
       .getClient()
