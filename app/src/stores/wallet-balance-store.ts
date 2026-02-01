@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { fetchWalletBalance } from '../services/sui-wallet-service';
+import { walletBalanceApiService } from '../api/wallet-balance-api-service';
 
 interface WalletState {
   usdcBalance: number;
@@ -9,7 +9,8 @@ interface WalletState {
   error: string | null;
   lastUpdated: number | null;
 
-  fetchBalance: (suiAddress: string) => Promise<void>;
+  fetchBalance: () => Promise<void>;
+  refreshBalance: () => Promise<void>;
   resetBalance: () => void;
 }
 
@@ -21,20 +22,49 @@ export const useWalletStore = create<WalletState>((set) => ({
   error: null,
   lastUpdated: null,
 
-  fetchBalance: async (suiAddress: string) => {
+  fetchBalance: async () => {
     set({ isLoading: true, error: null });
     try {
-      const { usdc, vndEquivalent, rate } = await fetchWalletBalance(suiAddress);
+      const balance = await walletBalanceApiService.getBalance();
+
+      // Parse string amounts to numbers
+      const usdcBalance = parseFloat(balance.usdcBalance);
+      const vndEquivalent = parseFloat(balance.usdcBalanceVnd);
+
       set({
-        usdcBalance: usdc,
+        usdcBalance,
         vndEquivalent,
-        rate,
+        rate: 25000, // Default rate, will be updated from rates API
         isLoading: false,
         lastUpdated: Date.now(),
       });
     } catch (error) {
       set({
         error: error instanceof Error ? error.message : 'Failed to fetch balance',
+        isLoading: false,
+      });
+    }
+  },
+
+  refreshBalance: async () => {
+    // Same as fetchBalance for now
+    set({ isLoading: true, error: null });
+    try {
+      const balance = await walletBalanceApiService.getBalance();
+
+      const usdcBalance = parseFloat(balance.usdcBalance);
+      const vndEquivalent = parseFloat(balance.usdcBalanceVnd);
+
+      set({
+        usdcBalance,
+        vndEquivalent,
+        rate: 25000, // Default rate
+        isLoading: false,
+        lastUpdated: Date.now(),
+      });
+    } catch (error) {
+      set({
+        error: error instanceof Error ? error.message : 'Failed to refresh balance',
         isLoading: false,
       });
     }

@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BankAccount } from '../types/transaction.types';
+import { bankAccountsCrudApiService } from '../api/bank-accounts-crud-api-service';
+import type { CreateBankAccountDto, BankAccountDto } from '@suigate/shared-types';
 
 const BANK_STORAGE_KEY = '@suigate:bank_accounts';
 
@@ -15,6 +17,16 @@ export const VIETNAM_BANKS = [
   { code: 'VTB', name: 'Vietinbank' },
   { code: 'TPB', name: 'TPBank' },
 ];
+
+// Map backend DTO to local BankAccount type
+const mapBankAccountDto = (dto: BankAccountDto): BankAccount => ({
+  id: dto.id,
+  bankCode: dto.bankCode,
+  bankName: VIETNAM_BANKS.find((b) => b.code === dto.bankCode)?.name || dto.bankCode,
+  accountNumber: dto.accountNumber, // Already masked by backend
+  accountHolder: dto.accountHolder,
+  isPrimary: dto.isPrimary,
+});
 
 interface BankAccountState {
   accounts: BankAccount[];
@@ -35,34 +47,54 @@ export const useBankAccountStore = create<BankAccountState>((set, get) => ({
   loadAccounts: async () => {
     set({ isLoading: true });
     try {
-      const data = await AsyncStorage.getItem(BANK_STORAGE_KEY);
-      if (data) {
-        set({ accounts: JSON.parse(data) });
-      }
+      // Try to fetch from API first
+      const response = await bankAccountsCrudApiService.list();
+      const accounts = response.accounts.map(mapBankAccountDto);
+
+      // Cache locally
+      await AsyncStorage.setItem(BANK_STORAGE_KEY, JSON.stringify(accounts));
+      set({ accounts, isLoading: false });
     } catch (error) {
-      console.error('Failed to load bank accounts:', error);
-    } finally {
-      set({ isLoading: false });
+      console.error('Failed to load bank accounts from API:', error);
+
+      // Fallback to local cache
+      try {
+        const data = await AsyncStorage.getItem(BANK_STORAGE_KEY);
+        if (data) {
+          set({ accounts: JSON.parse(data), isLoading: false });
+        } else {
+          set({ isLoading: false });
+        }
+      } catch (cacheError) {
+        console.error('Failed to load from cache:', cacheError);
+        set({ isLoading: false });
+      }
     }
   },
 
   addAccount: async (account) => {
-    const { accounts } = get();
-    const newId = accounts.length > 0 ? Math.max(...accounts.map((a) => a.id)) + 1 : 1;
-    const isFirst = accounts.length === 0;
+    try {
+      // Create DTO for API
+      const dto: CreateBankAccountDto = {
+        bankCode: account.bankCode,
+        accountNumber: account.accountNumber, // Send full number to API
+        accountHolder: account.accountHolder,
+        isPrimary: account.isPrimary,
+      };
 
-    const newAccount: BankAccount = {
-      ...account,
-      id: newId,
-      isPrimary: isFirst ? true : account.isPrimary,
-    };
+      // Call API
+      await bankAccountsCrudApiService.create(dto);
 
-    const updated = [...accounts, newAccount];
-    await AsyncStorage.setItem(BANK_STORAGE_KEY, JSON.stringify(updated));
-    set({ accounts: updated });
+      // Refresh list from backend
+      await get().loadAccounts();
+    } catch (error) {
+      console.error('Failed to add bank account:', error);
+      throw error;
+    }
   },
 
   updateAccount: async (id, updates) => {
+    // Not implemented in backend API for MVP
     const { accounts } = get();
     const updated = accounts.map((a) => (a.id === id ? { ...a, ...updates } : a));
     await AsyncStorage.setItem(BANK_STORAGE_KEY, JSON.stringify(updated));
@@ -70,24 +102,29 @@ export const useBankAccountStore = create<BankAccountState>((set, get) => ({
   },
 
   deleteAccount: async (id) => {
-    const { accounts } = get();
-    const updated = accounts.filter((a) => a.id !== id);
-    // If deleted was primary, set first remaining as primary
-    if (updated.length > 0 && !updated.some((a) => a.isPrimary)) {
-      updated[0].isPrimary = true;
+    try {
+      // Call API to delete
+      await bankAccountsCrudApiService.delete(id);
+
+      // Refresh list from backend
+      await get().loadAccounts();
+    } catch (error) {
+      console.error('Failed to delete bank account:', error);
+      throw error;
     }
-    await AsyncStorage.setItem(BANK_STORAGE_KEY, JSON.stringify(updated));
-    set({ accounts: updated });
   },
 
   setPrimary: async (id) => {
-    const { accounts } = get();
-    const updated = accounts.map((a) => ({
-      ...a,
-      isPrimary: a.id === id,
-    }));
-    await AsyncStorage.setItem(BANK_STORAGE_KEY, JSON.stringify(updated));
-    set({ accounts: updated });
+    try {
+      // Call API to set primary
+      await bankAccountsCrudApiService.setPrimary(id);
+
+      // Refresh list from backend
+      await get().loadAccounts();
+    } catch (error) {
+      console.error('Failed to set primary account:', error);
+      throw error;
+    }
   },
 
   getPrimaryAccount: () => {
