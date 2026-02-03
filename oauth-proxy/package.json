@@ -1,0 +1,6 @@
+{
+  "name": "suigate-oauth-proxy",
+  "version": "1.0.0",
+  "description": "OAuth redirect proxy for SuiGate zkLogin",
+  "private": true
+}
