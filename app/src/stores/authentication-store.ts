@@ -69,6 +69,7 @@ interface AuthState {
   fetchProfile: () => Promise<void>;
   setKycStatus: (status: KycStatus) => Promise<void>;
   setLocationStatus: (status: LocationStatus) => Promise<void>;
+  completeOAuthCallback: (idToken: string) => Promise<void>;
 
   // Computed
   canAccessVndFeatures: () => boolean;
@@ -305,6 +306,46 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     } catch (error) {
       console.error('Update location status error:', error);
       throw error;
+    }
+  },
+
+  completeOAuthCallback: async (idToken: string) => {
+    try {
+      console.log('[Auth] Processing OAuth callback...');
+      const { completeOAuthFlow } = await import('../services/zklogin/zklogin-oauth-flow-service');
+      const result = completeOAuthFlow(idToken);
+
+      if (!result.success || !result.jwt || !result.decodedJwt) {
+        console.error('[Auth] OAuth validation failed:', result.error);
+        return;
+      }
+
+      console.log('[Auth] JWT validated, continuing zkLogin flow...');
+
+      // Continue zkLogin flow with the validated JWT
+      const { continueZkLoginWithJwt } = await import('../services/zklogin-oauth-service');
+      const loginResult = await continueZkLoginWithJwt(result.jwt, result.decodedJwt);
+
+      if (!loginResult.success || !loginResult.accessToken) {
+        console.error('[Auth] zkLogin failed:', loginResult.error);
+        return;
+      }
+
+      console.log('[Auth] zkLogin complete, storing session...');
+
+      // Store session using loginWithBackend
+      await get().loginWithBackend({
+        accessToken: loginResult.accessToken,
+        userId: loginResult.userId!,
+        suiAddress: loginResult.suiAddress!,
+        email: loginResult.email,
+        isNewUser: loginResult.isNewUser,
+        zkLoginData: loginResult.zkLoginData,
+      });
+
+      console.log('[Auth] Session stored successfully');
+    } catch (error) {
+      console.error('[Auth] Complete OAuth callback error:', error);
     }
   },
 
