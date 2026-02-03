@@ -7,6 +7,15 @@ import {
 } from '../api/secure-token-storage';
 import { userProfileAndKycApiService } from '../api/user-profile-and-kyc-api-service';
 import type { KycStatus as BackendKycStatus } from '@suigate/shared-types';
+import type { ZkLoginData } from '../services/zklogin/zklogin-types';
+
+// Lazy import to avoid polyfill issues at startup
+const getZkLoginServices = async () => {
+  const { restoreSession, clearAllZkLoginData } = await import(
+    '../services/zklogin/zklogin-session-restore-service'
+  );
+  return { restoreSession, clearAllZkLoginData };
+};
 
 type KycStatus = 'none' | 'pending' | 'verified' | 'rejected';
 type LocationStatus = 'unknown' | 'granted' | 'denied' | 'within_sandbox' | 'outside_sandbox';
@@ -32,6 +41,10 @@ interface AuthState {
   userId: string | null;
   isLoading: boolean;
 
+  // zkLogin
+  zkLoginData: ZkLoginData | null;
+  zkLoginRestored: boolean;
+
   // KYC
   kycStatus: KycStatus;
 
@@ -47,7 +60,10 @@ interface AuthState {
     suiAddress: string;
     email?: string;
     isNewUser?: boolean;
+    zkLoginData?: ZkLoginData;
   }) => Promise<void>;
+  setZkLoginData: (data: ZkLoginData) => void;
+  restoreZkLoginSession: () => Promise<void>;
   logout: () => Promise<void>;
   checkAuth: () => Promise<void>;
   fetchProfile: () => Promise<void>;
@@ -66,6 +82,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   email: null,
   userId: null,
   isLoading: true,
+  zkLoginData: null,
+  zkLoginRestored: false,
   kycStatus: 'none',
   locationStatus: 'unknown',
   lastLocationCheck: null,
@@ -106,6 +124,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       userId: data.userId,
       suiAddress: data.suiAddress,
       email: data.email || null,
+      zkLoginData: data.zkLoginData || null,
+      zkLoginRestored: true,
       kycStatus: 'none',
       locationStatus: 'unknown',
     });
@@ -115,6 +135,35 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       await get().fetchProfile();
     } catch (error) {
       console.error('Failed to fetch profile after login:', error);
+    }
+  },
+
+  setZkLoginData: (data: ZkLoginData) => {
+    set({ zkLoginData: data, zkLoginRestored: true });
+  },
+
+  restoreZkLoginSession: async () => {
+    const { userId } = get();
+    if (!userId) {
+      set({ zkLoginRestored: true });
+      return;
+    }
+
+    try {
+      const { restoreSession } = await getZkLoginServices();
+      const result = await restoreSession(userId);
+
+      if (result.restored && result.zkLoginData) {
+        set({
+          zkLoginData: result.zkLoginData,
+          zkLoginRestored: true,
+        });
+      } else {
+        set({ zkLoginRestored: true });
+      }
+    } catch (error) {
+      console.error('zkLogin restore error:', error);
+      set({ zkLoginRestored: true });
     }
   },
 
@@ -151,6 +200,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout: async () => {
+    const { userId } = get();
+
+    // Clear zkLogin data (lazy load to avoid polyfill issues)
+    if (userId) {
+      try {
+        const { clearAllZkLoginData } = await getZkLoginServices();
+        await clearAllZkLoginData(userId);
+      } catch (error) {
+        console.error('Failed to clear zkLogin data:', error);
+      }
+    }
+
     // Clear tokens
     await clearAllTokens();
 
@@ -162,6 +223,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       suiAddress: null,
       email: null,
       userId: null,
+      zkLoginData: null,
+      zkLoginRestored: false,
       kycStatus: 'none',
       locationStatus: 'unknown',
       lastLocationCheck: null,

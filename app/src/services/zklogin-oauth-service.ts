@@ -1,31 +1,28 @@
 /**
- * zkLogin Service
- * MVP: Simulated OAuth flow + Backend integration
- * Production: Sui zkLogin with real OAuth
+ * zkLogin OAuth Service
+ * Main orchestrator for zkLogin authentication flow
+ * Coordinates ephemeral key, OAuth, salt, and proof generation
  */
 
-import * as WebBrowser from 'expo-web-browser';
 import { authZkLoginApiService } from '../api/auth-zklogin-api-service';
 import { USE_MOCK_AUTH } from '../config/api-base-configuration';
 import type { ZkLoginResponseDto } from '@suigate/shared-types';
 
-// For MVP demo - generates deterministic address from email
-const generateMockSuiAddress = (email: string): string => {
-  // Simple hash-like generation for demo
-  let hash = 0;
-  for (let i = 0; i < email.length; i++) {
-    const char = email.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash = hash & hash;
-  }
-  const hex = Math.abs(hash).toString(16).padStart(64, '0');
-  return `0x${hex.slice(0, 64)}`;
-};
-
-// Mock salt for demo
-const generateMockSalt = (): string => {
-  return Math.random().toString(36).substring(7);
-};
+// zkLogin services
+import { getOrCreateEphemeralKey } from './zklogin/zklogin-ephemeral-keypair-service';
+import { initiateGoogleLogin } from './zklogin/zklogin-oauth-flow-service';
+import { getSalt } from './zklogin/zklogin-salt-manager-service';
+import {
+  generateZkProof,
+  getExtendedPubKey,
+} from './zklogin/zklogin-prover-client-service';
+import { getAddressData } from './zklogin/zklogin-address-derivation-service';
+import {
+  cacheProof,
+  createCachedProofData,
+} from './zklogin/zklogin-session-cache-service';
+import { reconstructKeypair } from './zklogin/zklogin-ephemeral-keypair-service';
+import type { ZkLoginData } from './zklogin/zklogin-types';
 
 export interface ZkLoginResult {
   success: boolean;
@@ -34,39 +31,88 @@ export interface ZkLoginResult {
   accessToken?: string;
   userId?: string;
   isNewUser?: boolean;
+  zkLoginData?: ZkLoginData;
   error?: string;
 }
 
-// MVP: Mock Google login with backend integration
+/**
+ * Complete Google zkLogin flow
+ * 1. Generate/load ephemeral keypair
+ * 2. Initiate Google OAuth with nonce
+ * 3. Get salt from Mysten service
+ * 4. Generate ZK proof
+ * 5. Derive Sui address
+ * 6. Authenticate with backend
+ */
 export const loginWithGoogle = async (): Promise<ZkLoginResult> => {
   try {
-    // For hackathon demo: simulate OAuth delay
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    // 1. Get or create ephemeral keypair with nonce
+    const ephemeralKey = await getOrCreateEphemeralKey();
 
-    // Mock successful OAuth
-    const mockEmail = 'demo@example.com';
-    const suiAddress = generateMockSuiAddress(mockEmail);
-    const mockJwt = 'mock_google_jwt_token';
-    const mockSalt = generateMockSalt();
+    // 2. Initiate Google OAuth with nonce
+    const oauthResult = await initiateGoogleLogin(ephemeralKey.nonce);
 
-    // Call backend to authenticate
+    if (!oauthResult.success || !oauthResult.jwt || !oauthResult.decodedJwt) {
+      return {
+        success: false,
+        error: oauthResult.error || 'OAuth failed',
+      };
+    }
+
+    const { jwt, decodedJwt } = oauthResult;
+    const userId = decodedJwt.sub;
+
+    // 3. Get salt from Mysten salt service
+    const salt = await getSalt(jwt, userId);
+
+    // 4. Generate ZK proof from Mysten prover
+    const keypair = await reconstructKeypair(ephemeralKey);
+    const extendedPubKey = await getExtendedPubKey(keypair);
+
+    const proof = await generateZkProof({
+      jwt,
+      extendedEphemeralPublicKey: extendedPubKey,
+      maxEpoch: ephemeralKey.maxEpoch,
+      randomness: ephemeralKey.randomness,
+      salt,
+    });
+
+    // 5. Derive Sui address and address seed
+    const { suiAddress, addressSeed } = await getAddressData(jwt, salt);
+
+    // 6. Cache proof for session persistence
+    await cacheProof(
+      createCachedProofData(proof, addressSeed, ephemeralKey.maxEpoch, suiAddress)
+    );
+
+    // 7. Authenticate with backend
     const backendResponse = await authZkLoginApiService.zkLogin({
-      jwt: mockJwt,
+      jwt,
       suiAddress,
-      salt: mockSalt,
+      salt,
       provider: 'google',
     });
+
+    // 8. Construct zkLoginData for transaction signing
+    const zkLoginData: ZkLoginData = {
+      ephemeralKey,
+      proof,
+      addressSeed,
+      suiAddress,
+      maxEpoch: ephemeralKey.maxEpoch,
+    };
 
     return {
       success: true,
       suiAddress,
-      email: mockEmail,
+      email: decodedJwt.email,
       accessToken: backendResponse.accessToken,
       userId: backendResponse.userId,
       isNewUser: backendResponse.isNewUser,
+      zkLoginData,
     };
   } catch (error) {
-    console.error('Google login error:', error);
+    console.error('Google zkLogin error:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Login failed',
@@ -74,37 +120,12 @@ export const loginWithGoogle = async (): Promise<ZkLoginResult> => {
   }
 };
 
-// MVP: Mock Apple login with backend integration
+/**
+ * Apple login - deferred to post-hackathon per validation decision
+ */
 export const loginWithApple = async (): Promise<ZkLoginResult> => {
-  try {
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-
-    const mockEmail = 'demo.apple@icloud.com';
-    const suiAddress = generateMockSuiAddress(mockEmail);
-    const mockJwt = 'mock_apple_jwt_token';
-    const mockSalt = generateMockSalt();
-
-    // Call backend to authenticate
-    const backendResponse = await authZkLoginApiService.zkLogin({
-      jwt: mockJwt,
-      suiAddress,
-      salt: mockSalt,
-      provider: 'apple',
-    });
-
-    return {
-      success: true,
-      suiAddress,
-      email: mockEmail,
-      accessToken: backendResponse.accessToken,
-      userId: backendResponse.userId,
-      isNewUser: backendResponse.isNewUser,
-    };
-  } catch (error) {
-    console.error('Apple login error:', error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Login failed',
-    };
-  }
+  return {
+    success: false,
+    error: 'Apple login coming soon - use Google for now',
+  };
 };

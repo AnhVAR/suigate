@@ -12,13 +12,22 @@ import { setToastFunction } from '../src/api/axios-client-with-auth-interceptors
 
 export default function RootLayout() {
   const checkAuth = useAuthStore((state) => state.checkAuth);
+  const restoreZkLoginSession = useAuthStore((state) => state.restoreZkLoginSession);
   const showToast = useGlobalUiStore((state) => state.showToast);
 
   useEffect(() => {
-    checkAuth();
+    const init = async () => {
+      await checkAuth();
+      // Restore zkLogin session if authenticated
+      const { isAuthenticated } = useAuthStore.getState();
+      if (isAuthenticated) {
+        await restoreZkLoginSession();
+      }
+    };
+    init();
     // Set toast function for API client
     setToastFunction(showToast);
-  }, [checkAuth, showToast]);
+  }, [checkAuth, restoreZkLoginSession, showToast]);
 
   return (
     <ErrorBoundary>
