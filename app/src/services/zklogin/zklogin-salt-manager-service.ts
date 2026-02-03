@@ -25,9 +25,12 @@ interface SaltServiceResponse {
  * @param userId - User's sub claim for cache key
  */
 export const getSalt = async (jwt: string, userId: string): Promise<string> => {
-  // Clear old cached salt (salt format changed - now 16 bytes)
-  // TODO: Remove this after all users have new salt
-  await clearSalt(userId);
+  // Check cached salt first (deterministic per user)
+  const cached = await loadCachedSalt(userId);
+  if (cached) {
+    console.log('[Salt] Using cached salt');
+    return cached;
+  }
 
   let salt: string;
 

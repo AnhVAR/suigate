@@ -79,7 +79,12 @@ export const decodeAndValidateJwt = (
   jwt: string,
   expectedNonce: string
 ): DecodedJwt => {
-  const decoded = jwtDecode<DecodedJwt>(jwt);
+  let decoded: DecodedJwt;
+  try {
+    decoded = jwtDecode<DecodedJwt>(jwt);
+  } catch {
+    throw new Error('Invalid JWT format');
+  }
 
   // Validate issuer is Google
   if (decoded.iss !== 'https://accounts.google.com') {

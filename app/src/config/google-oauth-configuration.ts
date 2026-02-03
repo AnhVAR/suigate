@@ -3,9 +3,15 @@
  * Client IDs obtained from Google Cloud Console > APIs & Services > Credentials
  */
 
+// Validate required env var
+const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
+if (!webClientId) {
+  console.warn('[OAuth Config] EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID not set - OAuth will fail');
+}
+
 export const GOOGLE_OAUTH_CONFIG = {
-  // Web client ID (used for Expo Go development)
-  webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || '',
+  // Web client ID (required for OAuth)
+  webClientId: webClientId || '',
 
   // Android client ID (for production Android builds)
   androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || '',
