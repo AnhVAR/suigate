@@ -10,31 +10,8 @@ import { ToastNotificationContainer } from '../src/components/ui/toast-notificat
 import { GlobalLoadingOverlay } from '../src/components/ui/global-loading-overlay';
 import { OfflineNetworkBanner } from '../src/components/ui/offline-network-banner';
 import { setToastFunction } from '../src/api/axios-client-with-auth-interceptors';
+import { extractIdTokenFromUrl } from '../src/utils/oauth-url-parser';
 
-// Extract id_token from OAuth callback URL
-const extractOAuthToken = (url: string): string | null => {
-  if (!url.includes('oauth') && !url.includes('id_token')) return null;
-
-  // Try fragment (#id_token=xxx)
-  const hashIndex = url.indexOf('#');
-  if (hashIndex !== -1) {
-    const fragment = url.substring(hashIndex + 1);
-    const params = new URLSearchParams(fragment);
-    const token = params.get('id_token');
-    if (token) return token;
-  }
-
-  // Try query params (?id_token=xxx)
-  const queryIndex = url.indexOf('?');
-  if (queryIndex !== -1) {
-    const query = url.substring(queryIndex + 1);
-    const params = new URLSearchParams(query);
-    const token = params.get('id_token');
-    if (token) return token;
-  }
-
-  return null;
-};
 
 export default function RootLayout() {
   const router = useRouter();
@@ -51,7 +28,7 @@ export default function RootLayout() {
       if (oauthHandled) return;
       console.log('[RootLayout] Checking URL for OAuth:', url);
 
-      const token = extractOAuthToken(url);
+      const token = extractIdTokenFromUrl(url);
       if (token) {
         oauthHandled = true;
         console.log('[RootLayout] OAuth token found, completing auth...');
