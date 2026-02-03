@@ -94,6 +94,43 @@ export default function ConvertScreen() {
 
   const calc = getCalculation();
 
+  /**
+   * Extract user-friendly error message from API error response
+   */
+  const extractErrorMessage = (error: unknown): string => {
+    // Check if it's an axios error with response
+    if (error && typeof error === 'object' && 'response' in error) {
+      const axiosError = error as {
+        response?: {
+          data?: {
+            message?: string | string[];
+            error?: string;
+          };
+        };
+      };
+
+      const message = axiosError.response?.data?.message;
+
+      // Handle array of error messages
+      if (Array.isArray(message)) {
+        return message.join(', ');
+      }
+
+      // Handle single error message
+      if (typeof message === 'string') {
+        return message;
+      }
+
+      // Fallback to error field
+      if (axiosError.response?.data?.error) {
+        return axiosError.response.data.error;
+      }
+    }
+
+    // Generic fallback
+    return 'Failed to create order. Please try again.';
+  };
+
   const handleSubmit = async () => {
     if (!canAccess) {
       Alert.alert('Access Denied', 'Please complete KYC and location verification');
@@ -142,8 +179,10 @@ export default function ConvertScreen() {
         await createSmartSellOrder(amountNum, targetRateNum, selectedBankId);
         setStep('success');
       }
-    } catch {
-      Alert.alert('Error', 'Failed to create order');
+    } catch (error) {
+      const errorMessage = extractErrorMessage(error);
+      Alert.alert('Error', errorMessage);
+      console.error('Order creation failed:', error);
     } finally {
       setIsSubmitting(false);
     }

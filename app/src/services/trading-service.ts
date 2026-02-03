@@ -5,8 +5,9 @@
  */
 
 import { ordersBuySellApiService } from '../api/orders-buy-sell-api-service';
+import { exchangeRatesApiService } from '../api/exchange-rates-api-service';
 
-const MOCK_RATE = 25000; // VND per USDC (fallback)
+const FALLBACK_RATE = 25000; // VND per USDC (fallback when API fails)
 const BUY_FEE = 0.005; // 0.5%
 const QUICK_SELL_FEE = 0.005; // 0.5%
 const SMART_SELL_FEE = 0.002; // 0.2%
@@ -36,12 +37,40 @@ export interface SmartSellComparison {
 }
 
 /**
- * Fetch current VND/USDC rate (mock with small variation)
+ * Fetch current VND/USDC rate from backend API
+ * Falls back to cached or default rate on error
  */
+let cachedRate: number | null = null;
+let lastFetchTime = 0;
+const CACHE_TTL = 60000; // 60 seconds
+
 export const getCurrentRate = async (): Promise<number> => {
-  await new Promise((r) => setTimeout(r, 300));
-  // Add small random variation for realism
-  return MOCK_RATE + Math.floor(Math.random() * 200 - 100);
+  try {
+    // Use cache if fresh
+    const now = Date.now();
+    if (cachedRate && now - lastFetchTime < CACHE_TTL) {
+      return cachedRate;
+    }
+
+    // Fetch from real API
+    const rates = await exchangeRatesApiService.getCurrentRates();
+    cachedRate = rates.buyRate; // Use buyRate for user-facing display
+    lastFetchTime = now;
+
+    return cachedRate;
+  } catch (error) {
+    console.error('Failed to fetch current rate:', error);
+
+    // Return cached rate if available
+    if (cachedRate) {
+      console.warn('Using cached rate due to API error');
+      return cachedRate;
+    }
+
+    // Final fallback to default rate
+    console.warn('Using fallback rate');
+    return FALLBACK_RATE;
+  }
 };
 
 /**
