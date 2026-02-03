@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { walletBalanceApiService } from '../api/wallet-balance-api-service';
+import { useAuthStore } from './authentication-store';
 
 interface WalletState {
   usdcBalance: number;
@@ -14,7 +14,7 @@ interface WalletState {
   resetBalance: () => void;
 }
 
-export const useWalletStore = create<WalletState>((set) => ({
+export const useWalletStore = create<WalletState>((set, get) => ({
   usdcBalance: 0,
   vndEquivalent: 0,
   rate: 25000,
@@ -23,18 +23,27 @@ export const useWalletStore = create<WalletState>((set) => ({
   lastUpdated: null,
 
   fetchBalance: async () => {
+    const suiAddress = useAuthStore.getState().suiAddress;
+    if (!suiAddress) {
+      set({ error: 'No wallet address', isLoading: false });
+      return;
+    }
+
     set({ isLoading: true, error: null });
     try {
-      const balance = await walletBalanceApiService.getBalance();
+      // Use direct RPC fetch (SDK not compatible with React Native)
+      const { fetchUsdcBalanceFromRpc, fetchRateFromBackend } = await import(
+        '../services/sui-rpc-balance-service'
+      );
 
-      // Parse string amounts to numbers
-      const usdcBalance = parseFloat(balance.usdcBalance);
-      const vndEquivalent = parseFloat(balance.usdcBalanceVnd);
+      const rate = await fetchRateFromBackend();
+      const usdcBalance = await fetchUsdcBalanceFromRpc(suiAddress);
+      const balance = { usdc: usdcBalance, vndEquivalent: usdcBalance * rate, rate };
 
       set({
-        usdcBalance,
-        vndEquivalent,
-        rate: 25000, // Default rate, will be updated from rates API
+        usdcBalance: balance.usdc,
+        vndEquivalent: balance.vndEquivalent,
+        rate: balance.rate,
         isLoading: false,
         lastUpdated: Date.now(),
       });
@@ -47,27 +56,8 @@ export const useWalletStore = create<WalletState>((set) => ({
   },
 
   refreshBalance: async () => {
-    // Same as fetchBalance for now
-    set({ isLoading: true, error: null });
-    try {
-      const balance = await walletBalanceApiService.getBalance();
-
-      const usdcBalance = parseFloat(balance.usdcBalance);
-      const vndEquivalent = parseFloat(balance.usdcBalanceVnd);
-
-      set({
-        usdcBalance,
-        vndEquivalent,
-        rate: 25000, // Default rate
-        isLoading: false,
-        lastUpdated: Date.now(),
-      });
-    } catch (error) {
-      set({
-        error: error instanceof Error ? error.message : 'Failed to refresh balance',
-        isLoading: false,
-      });
-    }
+    // Same as fetchBalance - refresh from RPC
+    await get().fetchBalance();
   },
 
   resetBalance: () => {

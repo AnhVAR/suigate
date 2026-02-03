@@ -1,25 +1,47 @@
 /**
  * Sui Wallet Service
  * Handles balance fetching and zkLogin transaction signing
+ * Uses dynamic imports to defer Sui SDK loading until after polyfills
  */
 
-import { Transaction } from '@mysten/sui/transactions';
-import { getJsonRpcFullnodeUrl, SuiJsonRpcClient } from '@mysten/sui/jsonRpc';
-import { getZkLoginSignature } from '@mysten/sui/zklogin';
 import { reconstructKeypair } from './zklogin/zklogin-ephemeral-keypair-service';
 import type { ZkLoginData } from './zklogin/zklogin-types';
 
-// USDC coin type on Sui (native USDC)
-const USDC_COIN_TYPE =
-  '0x5d4b302506645c37ff133b98c4b50a5ae14841659738d6d733d59d0d217a93bf::coin::COIN';
+// TEST_USDC coin type on Sui Testnet
+const TEST_USDC_TYPE =
+  '0xfda5e7d874aee36569b18e6df8c62693e93c8dfa76e317543aa9bb827ed91d13::test_usdc::TEST_USDC';
 
-// Mock rate for demo (real: fetch from Binance API)
-const MOCK_VND_RATE = 25000; // 1 USDC = 25,000 VND
+const FALLBACK_VND_RATE = 25000;
+
+// Lazy-loaded Sui SDK modules
+let SuiJsonRpcClient: any = null;
+let Transaction: any = null;
+let getZkLoginSignature: any = null;
+
+// Testnet RPC URL (hardcoded to avoid import issues)
+const TESTNET_RPC = 'https://fullnode.testnet.sui.io:443';
+
+/** Load Sui SDK modules dynamically */
+const loadSuiModules = async () => {
+  if (!SuiJsonRpcClient) {
+    const jsonRpc = await import('@mysten/sui/jsonRpc');
+    SuiJsonRpcClient = jsonRpc.SuiJsonRpcClient;
+  }
+  if (!Transaction) {
+    const tx = await import('@mysten/sui/transactions');
+    Transaction = tx.Transaction;
+  }
+  if (!getZkLoginSignature) {
+    const zklogin = await import('@mysten/sui/zklogin');
+    getZkLoginSignature = zklogin.getZkLoginSignature;
+  }
+};
 
 /** Create SuiClient for testnet */
-const createSuiClient = () =>
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  new SuiJsonRpcClient({ url: getJsonRpcFullnodeUrl('testnet') } as any);
+const createSuiClient = async () => {
+  await loadSuiModules();
+  return new SuiJsonRpcClient({ url: TESTNET_RPC });
+};
 
 export interface WalletBalance {
   usdc: number;
@@ -28,21 +50,25 @@ export interface WalletBalance {
 }
 
 export const fetchWalletBalance = async (
-  suiAddress: string
+  suiAddress: string,
+  rate?: number
 ): Promise<WalletBalance> => {
   try {
-    // MVP: Simulated balance fetch
-    // Production: Use Sui SDK to query USDC balance
-    await new Promise((resolve) => setTimeout(resolve, 800));
+    const client = await createSuiClient();
 
-    // Demo balance
-    const usdcBalance = 150.0;
-    const rate = MOCK_VND_RATE;
+    // Query TEST_USDC balance from Sui RPC
+    const balance = await client.getBalance({
+      owner: suiAddress,
+      coinType: TEST_USDC_TYPE,
+    });
+
+    const usdcBalance = Number(balance.totalBalance) / 1_000_000;
+    const currentRate = rate || FALLBACK_VND_RATE;
 
     return {
       usdc: usdcBalance,
-      vndEquivalent: usdcBalance * rate,
-      rate,
+      vndEquivalent: usdcBalance * currentRate,
+      rate: currentRate,
     };
   } catch (error) {
     console.error('Failed to fetch balance:', error);
@@ -51,16 +77,24 @@ export const fetchWalletBalance = async (
 };
 
 export const fetchCurrentRate = async (): Promise<number> => {
-  // MVP: Return mock rate
-  // Production: Fetch from Binance/CoinGecko
-  return MOCK_VND_RATE;
+  try {
+    const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.2.34:3000';
+    const response = await fetch(`${apiUrl}/rates/current`);
+    if (response.ok) {
+      const data = await response.json();
+      return data.sellRate || FALLBACK_VND_RATE;
+    }
+  } catch (error) {
+    console.warn('Failed to fetch rate:', error);
+  }
+  return FALLBACK_VND_RATE;
 };
 
 /**
  * Fetch real SUI balance from testnet
  */
 export const fetchSuiBalance = async (suiAddress: string): Promise<bigint> => {
-  const client = createSuiClient();
+  const client = await createSuiClient();
   const balance = await client.getBalance({
     owner: suiAddress,
     coinType: '0x2::sui::SUI',
@@ -70,26 +104,26 @@ export const fetchSuiBalance = async (suiAddress: string): Promise<bigint> => {
 
 /**
  * Sign and execute transaction with zkLogin
- * This is the core function for executing any transaction with zkLogin credentials
  */
 export const signAndExecuteWithZkLogin = async (
-  txb: Transaction,
+  txb: any,
   zkLoginData: ZkLoginData
 ): Promise<{ digest: string; effects: unknown }> => {
-  const client = createSuiClient();
+  await loadSuiModules();
+  const client = await createSuiClient();
 
   // Set sender address
   txb.setSender(zkLoginData.suiAddress);
 
   // Sign with ephemeral keypair
-  const keypair = reconstructKeypair(zkLoginData.ephemeralKey);
+  const keypair = await reconstructKeypair(zkLoginData.ephemeralKey);
   const { bytes, signature: userSignature } = await txb.sign({
     client,
     signer: keypair,
   });
 
   // Assemble zkLogin signature
-  const zkLoginSignature = getZkLoginSignature({
+  const zkLoginSig = getZkLoginSignature({
     inputs: {
       ...zkLoginData.proof,
       addressSeed: zkLoginData.addressSeed,
@@ -101,7 +135,7 @@ export const signAndExecuteWithZkLogin = async (
   // Execute transaction
   const result = await client.executeTransactionBlock({
     transactionBlock: bytes,
-    signature: zkLoginSignature,
+    signature: zkLoginSig,
     options: {
       showEffects: true,
       showEvents: true,
