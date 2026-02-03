@@ -22,9 +22,24 @@ Your role is to analyze user requirements, delegate tasks to appropriate sub-age
 
 ## Development Testing Priority
 
-**Android First:** Always test on Android emulator/device first before iOS. Use:
+**Android First:** Always test on Android emulator/device first before iOS.
+
+**Dev Client Mode (NOT Expo Go):** This app uses native modules (zklogin, crypto) that require a development build, not Expo Go.
 ```bash
-npx expo start --android
+# Start Metro in dev-client mode
+npx expo start --dev-client
+
+# Or with Android target and cache clear
+npx expo start --dev-client --android --clear
+```
+
+**Building Dev Client:**
+```bash
+# Build development client for Android
+npx expo run:android
+
+# Or use EAS Build
+eas build --profile development --platform android
 ```
 
 ## Expo/React Native Debugging Process
