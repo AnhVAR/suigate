@@ -18,6 +18,9 @@ export default function LoginScreen() {
       if (result.success && result.suiAddress) {
         await login(result.suiAddress, result.email);
         router.replace('/(auth)/kyc-verification');
+      } else if (result.error === 'PENDING') {
+        // Browser opened, waiting for OAuth callback - not an error
+        // Auth will complete via deep link handler in _layout.tsx
       } else {
         Alert.alert('Error', result.error || 'Login failed');
       }
@@ -102,12 +105,6 @@ export default function LoginScreen() {
           </Text>
         </View>
 
-        {/* Demo Note */}
-        <View style={styles.demoNote}>
-          <Text style={styles.demoText}>
-            Demo: zkLogin generates seedless wallet from your OAuth account
-          </Text>
-        </View>
       </View>
     </SafeAreaView>
   );
@@ -196,16 +193,5 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 12,
     lineHeight: 18,
-  },
-  demoNote: {
-    marginTop: 24,
-    backgroundColor: '#f3e8ff',
-    padding: 16,
-    borderRadius: 12,
-  },
-  demoText: {
-    color: '#7c3aed',
-    fontSize: 14,
-    textAlign: 'center',
   },
 });
