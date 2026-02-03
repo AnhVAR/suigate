@@ -1,53 +1,27 @@
 /**
  * Bank Account Picker Component
- * Modal-based selector for linked bank accounts (mock data)
+ * Modal-based selector for linked bank accounts
  */
 
 import React, { useState } from 'react';
-import { View, Text, Pressable, Modal, ScrollView } from 'react-native';
+import { View, Text, Pressable, Modal, ScrollView, ActivityIndicator } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-
-interface BankAccount {
-  id: number;
-  bankCode: string;
-  bankName: string;
-  accountNumber: string;
-  accountHolder: string;
-  isPrimary: boolean;
-}
+import type { BankAccount } from '../../types/transaction.types';
 
 interface BankAccountPickerProps {
-  accounts?: BankAccount[];
+  accounts: BankAccount[];
   selectedId: number | null;
   onSelect: (id: number) => void;
   onAddNew?: () => void;
+  isLoading?: boolean;
 }
 
-// Mock bank accounts for demo
-const mockAccounts: BankAccount[] = [
-  {
-    id: 1,
-    bankCode: 'VCB',
-    bankName: 'Vietcombank',
-    accountNumber: '****6789',
-    accountHolder: 'NGUYEN VAN A',
-    isPrimary: true,
-  },
-  {
-    id: 2,
-    bankCode: 'TCB',
-    bankName: 'Techcombank',
-    accountNumber: '****4321',
-    accountHolder: 'NGUYEN VAN A',
-    isPrimary: false,
-  },
-];
-
 export const BankAccountPicker: React.FC<BankAccountPickerProps> = ({
-  accounts = mockAccounts,
+  accounts,
   selectedId,
   onSelect,
   onAddNew,
+  isLoading = false,
 }) => {
   const [isModalVisible, setIsModalVisible] = useState(false);
 
@@ -68,7 +42,12 @@ export const BankAccountPicker: React.FC<BankAccountPickerProps> = ({
         onPress={() => setIsModalVisible(true)}
         className="flex-row items-center justify-between bg-neutral-50 rounded-xl border border-neutral-200 p-4"
       >
-        {selectedAccount ? (
+        {isLoading ? (
+          <View className="flex-row items-center">
+            <ActivityIndicator size="small" color="#8b5cf6" />
+            <Text className="text-neutral-500 ml-2">Loading accounts...</Text>
+          </View>
+        ) : selectedAccount ? (
           <View className="flex-row items-center">
             <View className="w-10 h-10 bg-primary-100 rounded-full items-center justify-center mr-3">
               <Text className="text-primary-700 font-bold text-sm">
@@ -84,6 +63,8 @@ export const BankAccountPicker: React.FC<BankAccountPickerProps> = ({
               </Text>
             </View>
           </View>
+        ) : accounts.length === 0 ? (
+          <Text className="text-amber-600">No bank account linked</Text>
         ) : (
           <Text className="text-neutral-500">Select bank account</Text>
         )}
@@ -110,6 +91,19 @@ export const BankAccountPicker: React.FC<BankAccountPickerProps> = ({
 
           {/* Account List */}
           <ScrollView className="flex-1 p-4">
+            {isLoading && (
+              <View className="items-center py-8">
+                <ActivityIndicator size="large" color="#8b5cf6" />
+                <Text className="text-neutral-500 mt-2">Loading accounts...</Text>
+              </View>
+            )}
+            {!isLoading && accounts.length === 0 && (
+              <View className="items-center py-8">
+                <MaterialIcons name="account-balance" size={48} color="#d1d5db" />
+                <Text className="text-neutral-500 mt-2">No bank accounts linked</Text>
+                <Text className="text-neutral-400 text-sm mt-1">Add a bank account to receive VND</Text>
+              </View>
+            )}
             {accounts.map((item) => (
               <Pressable
                 key={item.id}

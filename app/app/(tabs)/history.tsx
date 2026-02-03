@@ -1,62 +1,51 @@
-import { View, Text, FlatList, RefreshControl } from 'react-native';
-import { useState } from 'react';
+import { View, Text, FlatList, RefreshControl, ActivityIndicator } from 'react-native';
+import { useState, useEffect, useCallback } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Transaction, OrderType } from '../../src/types/transaction.types';
 import { TransactionFilterTabs } from '../../src/components/history/transaction-filter-tabs';
 import { TransactionListItem } from '../../src/components/history/transaction-list-item';
+import { ordersBuySellApiService } from '../../src/api/orders-buy-sell-api-service';
+import type { OrderDto } from '@suigate/shared-types';
 
-// Mock transactions for demo
-const mockTransactions: Transaction[] = [
-  {
-    id: '1',
-    type: 'buy',
-    amountUsdc: 50,
-    amountVnd: 1250000,
-    rate: 25000,
-    status: 'settled',
-    createdAt: new Date(Date.now() - 3600000),
-    updatedAt: new Date(Date.now() - 3000000),
-  },
-  {
-    id: '2',
-    type: 'quick_sell',
-    amountUsdc: 25,
-    amountVnd: 618750,
-    rate: 24950,
-    status: 'processing',
-    createdAt: new Date(Date.now() - 7200000),
-    updatedAt: new Date(Date.now() - 7000000),
-  },
-  {
-    id: '3',
-    type: 'smart_sell',
-    amountUsdc: 100,
-    amountVnd: 0,
-    rate: 25000,
-    targetRate: 26000,
-    status: 'pending',
-    filledUsdc: 70,
-    totalUsdc: 100,
-    createdAt: new Date(Date.now() - 86400000),
-    updatedAt: new Date(Date.now() - 50000000),
-  },
-  {
-    id: '4',
-    type: 'buy',
-    amountUsdc: 200,
-    amountVnd: 5000000,
-    rate: 25000,
-    status: 'settled',
-    createdAt: new Date(Date.now() - 172800000),
-    updatedAt: new Date(Date.now() - 172000000),
-  },
-];
+/** Map backend OrderDto to local Transaction type */
+const mapOrderToTransaction = (order: OrderDto): Transaction => ({
+  id: order.id,
+  type: order.orderType as OrderType,
+  amountUsdc: order.amountUsdc ? parseFloat(order.amountUsdc) : 0,
+  amountVnd: order.amountVnd || 0,
+  rate: order.rate,
+  status: order.status as Transaction['status'],
+  createdAt: new Date(order.createdAt),
+  updatedAt: new Date(order.createdAt),
+  targetRate: order.targetRate || undefined,
+});
 
 export default function HistoryScreen() {
   const [filter, setFilter] = useState<OrderType | 'all'>('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [transactions] = useState<Transaction[]>(mockTransactions);
+  const [isLoading, setIsLoading] = useState(true);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchTransactions = useCallback(async () => {
+    try {
+      setError(null);
+      const response = await ordersBuySellApiService.listOrders();
+      const mapped = response.orders.map(mapOrderToTransaction);
+      setTransactions(mapped);
+    } catch (err) {
+      console.error('Failed to fetch transactions:', err);
+      setError('Failed to load transactions');
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchTransactions();
+  }, [fetchTransactions]);
 
   const filteredTransactions =
     filter === 'all'
@@ -65,15 +54,38 @@ export default function HistoryScreen() {
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    // Simulate refresh
-    await new Promise((r) => setTimeout(r, 1000));
-    setIsRefreshing(false);
+    await fetchTransactions();
   };
 
   const handleTransactionPress = (tx: Transaction) => {
-    // TODO: Navigate to transaction detail
     console.log('Transaction pressed:', tx.id);
   };
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <SafeAreaView className="flex-1 bg-neutral-50 items-center justify-center" edges={['top']}>
+        <ActivityIndicator size="large" color="#8b5cf6" />
+        <Text className="text-neutral-500 mt-4">Loading transactions...</Text>
+      </SafeAreaView>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <SafeAreaView className="flex-1 bg-neutral-50 items-center justify-center px-5" edges={['top']}>
+        <MaterialIcons name="error-outline" size={64} color="#ef4444" />
+        <Text className="text-neutral-700 text-lg mt-4">{error}</Text>
+        <Text
+          className="text-primary-500 font-medium mt-2"
+          onPress={fetchTransactions}
+        >
+          Tap to retry
+        </Text>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView className="flex-1 bg-neutral-50" edges={['top']}>

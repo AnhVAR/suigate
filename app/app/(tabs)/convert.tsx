@@ -5,11 +5,12 @@
 
 import { View, Text, ScrollView, Pressable, Alert } from 'react-native';
 import { useState, useEffect, useCallback } from 'react';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useAuthStore } from '../../src/stores/authentication-store';
 import { useWalletStore } from '../../src/stores/wallet-balance-store';
+import { useBankAccountStore } from '../../src/stores/bank-account-store';
 import {
   getCurrentRate,
   createBuyOrder,
@@ -37,7 +38,7 @@ export default function ConvertScreen() {
   // Input state
   const [amount, setAmount] = useState('');
   const [targetRate, setTargetRate] = useState('');
-  const [selectedBankId, setSelectedBankId] = useState<number | null>(1);
+  const [selectedBankId, setSelectedBankId] = useState<number | null>(null);
 
   // Rate state
   const [currentRate, setCurrentRate] = useState(25000);
@@ -55,6 +56,7 @@ export default function ConvertScreen() {
 
   const { canAccessVndFeatures } = useAuthStore();
   const { usdcBalance } = useWalletStore();
+  const { accounts: bankAccounts, isLoading: isBankAccountsLoading, loadAccounts } = useBankAccountStore();
 
   const fetchRate = useCallback(async () => {
     setIsLoadingRate(true);
@@ -71,7 +73,16 @@ export default function ConvertScreen() {
       setMode(params.mode as TradeMode);
     }
     fetchRate();
-  }, [params.mode, fetchRate]);
+    loadAccounts();
+  }, [params.mode, fetchRate, loadAccounts]);
+
+  // Auto-select primary bank account when accounts are loaded
+  useEffect(() => {
+    if (bankAccounts.length > 0 && selectedBankId === null) {
+      const primary = bankAccounts.find((a) => a.isPrimary);
+      setSelectedBankId(primary?.id || bankAccounts[0].id);
+    }
+  }, [bankAccounts, selectedBankId]);
 
   const canAccess = canAccessVndFeatures();
   const amountNum = parseFloat(amount) || 0;
@@ -334,8 +345,11 @@ export default function ConvertScreen() {
         {mode !== 'buy' && (
           <View className="mb-6">
             <BankAccountPicker
+              accounts={bankAccounts}
               selectedId={selectedBankId}
               onSelect={setSelectedBankId}
+              isLoading={isBankAccountsLoading}
+              onAddNew={() => router.push('/settings')}
             />
           </View>
         )}
