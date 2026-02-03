@@ -13,6 +13,11 @@ export class SuiTransactionService implements OnModuleInit {
   private poolId = '';
   private usdcType = '';
 
+  // RPC retry configuration
+  private readonly MAX_RETRIES = 3;
+  private readonly INITIAL_RETRY_DELAY_MS = 1000;
+  private readonly RPC_TIMEOUT_MS = 30000;
+
   constructor(private config: ConfigService) {}
 
   async onModuleInit() {
@@ -44,11 +49,59 @@ export class SuiTransactionService implements OnModuleInit {
     }
   }
 
+  /**
+   * Get pool USDC balance by reading the pool object's reserve field
+   * @returns Balance in USDC (human-readable format)
+   */
+  private async getPoolBalance(): Promise<number> {
+    return this.withRetry(async () => {
+      // Query the pool object directly to read its reserve balance
+      const poolObject = await this.client.getObject({
+        id: this.poolId,
+        options: { showContent: true },
+      });
+
+      if (!poolObject?.data?.content?.fields) {
+        this.logger.warn('Could not read pool object fields');
+        return 0;
+      }
+
+      // The reserve is a Balance<T> which has a value field
+      const reserveValue = poolObject.data.content.fields.reserve;
+      const balanceRaw = typeof reserveValue === 'object' ? reserveValue.value : reserveValue;
+
+      // USDC has 6 decimals on Sui
+      return Number(balanceRaw || 0) / 1_000_000;
+    }, 'getPoolBalance');
+  }
+
+  /**
+   * Check if pool has sufficient liquidity for the requested amount
+   * @param amountUsdc Amount in USDC
+   * @throws Error if insufficient liquidity
+   */
+  private async checkPoolLiquidity(amountUsdc: number): Promise<void> {
+    const poolBalance = await this.getPoolBalance();
+
+    if (poolBalance < amountUsdc) {
+      const message = `Insufficient pool liquidity: requested ${amountUsdc} USDC, available ${poolBalance.toFixed(6)} USDC`;
+      this.logger.error(message);
+      throw new Error(message);
+    }
+
+    this.logger.log(
+      `Pool liquidity check passed: ${amountUsdc} USDC <= ${poolBalance.toFixed(6)} USDC`,
+    );
+  }
+
   /** Dispense USDC to user after VND payment confirmed */
   async dispenseUsdc(
     amountUsdc: number,
     recipientAddress: string,
   ): Promise<string> {
+    // Pre-check: Verify pool has sufficient liquidity before creating transaction
+    await this.checkPoolLiquidity(amountUsdc);
+
     const { Transaction } = await import('@mysten/sui/transactions');
 
     const tx = new Transaction();
@@ -113,22 +166,67 @@ export class SuiTransactionService implements OnModuleInit {
     return this.signAndExecute(tx);
   }
 
+  /**
+   * Retry wrapper with exponential backoff
+   * @param operation RPC operation to execute
+   * @param operationName Name for logging
+   * @returns Operation result
+   */
+  private async withRetry<T>(
+    operation: () => Promise<T>,
+    operationName: string,
+  ): Promise<T> {
+    let lastError: Error;
+
+    for (let attempt = 1; attempt <= this.MAX_RETRIES; attempt++) {
+      try {
+        // Create timeout promise
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => {
+            reject(new Error(`RPC timeout after ${this.RPC_TIMEOUT_MS}ms`));
+          }, this.RPC_TIMEOUT_MS);
+        });
+
+        // Race between operation and timeout
+        return await Promise.race([operation(), timeoutPromise]);
+      } catch (error) {
+        lastError = error as Error;
+        this.logger.warn(
+          `${operationName} attempt ${attempt}/${this.MAX_RETRIES} failed: ${lastError.message}`,
+        );
+
+        if (attempt < this.MAX_RETRIES) {
+          const delay = this.INITIAL_RETRY_DELAY_MS * Math.pow(2, attempt - 1);
+          this.logger.log(`Retrying ${operationName} in ${delay}ms...`);
+          await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+      }
+    }
+
+    this.logger.error(
+      `${operationName} failed after ${this.MAX_RETRIES} attempts`,
+    );
+    throw lastError!;
+  }
+
   private async signAndExecute(tx: any): Promise<string> {
     if (!this.signer) {
       throw new Error('Signer not initialized');
     }
 
-    const result = await this.client.signAndExecuteTransaction({
-      transaction: tx,
-      signer: this.signer,
-      options: { showEffects: true },
-    });
+    return this.withRetry(async () => {
+      const result = await this.client.signAndExecuteTransaction({
+        transaction: tx,
+        signer: this.signer,
+        options: { showEffects: true },
+      });
 
-    if (result.effects?.status?.status !== 'success') {
-      throw new Error(`Transaction failed: ${result.effects?.status?.error}`);
-    }
+      if (result.effects?.status?.status !== 'success') {
+        throw new Error(`Transaction failed: ${result.effects?.status?.error}`);
+      }
 
-    this.logger.log(`Transaction executed: ${result.digest}`);
-    return result.digest;
+      this.logger.log(`Transaction executed: ${result.digest}`);
+      return result.digest;
+    }, 'signAndExecute');
   }
 }

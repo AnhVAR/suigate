@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { SupabaseModule } from './common/supabase/supabase.module';
@@ -21,6 +22,12 @@ import configuration from './config/configuration';
       load: [configuration],
     }),
     ScheduleModule.forRoot(),
+    ThrottlerModule.forRoot([
+      {
+        ttl: 60000, // 60 seconds window
+        limit: 10, // 10 requests per window
+      },
+    ]),
     SupabaseModule,
     SuiModule,
     AuthModule,

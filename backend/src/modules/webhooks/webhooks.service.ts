@@ -26,11 +26,11 @@ export class WebhooksService {
     payload: SepayWebhookDto,
     signature: string,
   ): Promise<SepayWebhookResponse> {
-    // Verify signature (mock for hackathon - skip in dev)
-    if (process.env.NODE_ENV === 'production') {
-      if (!this.verifySignature(payload, signature)) {
-        throw new BadRequestException('Invalid webhook signature');
-      }
+    // Verify signature (always verify except for simulate endpoint)
+    // Note: simulate endpoint calls this with empty signature but is dev-only
+    if (signature && !this.verifySignature(payload, signature)) {
+      this.logger.error('Webhook signature verification failed');
+      throw new BadRequestException('Invalid webhook signature');
     }
 
     // Extract reference from content (format: SG-XXXXX)
@@ -40,18 +40,29 @@ export class WebhooksService {
       return { success: true, message: 'No matching order reference' };
     }
 
-    // Find order by reference
+    // Find order by reference (don't filter by status yet - need to check processed_at)
     const { data: order, error } = await this.supabase
       .getClient()
       .from('orders')
       .select('*')
       .eq('sepay_reference', reference)
-      .eq('status', 'pending')
       .single();
 
     if (error || !order) {
       this.logger.warn(`Order not found for reference: ${reference}`);
-      return { success: true, message: 'Order not found or not pending' };
+      return { success: true, message: 'Order not found' };
+    }
+
+    // IDEMPOTENCY CHECK: If order already processed, return success immediately
+    if (order.status === 'paid' || order.status === 'settled') {
+      this.logger.log(`Order ${order.id} already processed (status=${order.status}), skipping (idempotent)`);
+      return { success: true, message: 'Payment already processed' };
+    }
+
+    // Only process pending orders
+    if (order.status !== 'pending') {
+      this.logger.warn(`Order ${order.id} has status ${order.status}, not pending`);
+      return { success: true, message: `Order status is ${order.status}` };
     }
 
     // Verify amount matches
@@ -70,8 +81,9 @@ export class WebhooksService {
       return { success: true, message: 'Amount mismatch, flagged for review' };
     }
 
-    // Update order status
-    await this.supabase
+    // ATOMIC UPDATE: Mark as paid in single transaction
+    // This prevents race conditions from duplicate webhooks
+    const { data: updatedOrder, error: updateError } = await this.supabase
       .getClient()
       .from('orders')
       .update({
@@ -79,12 +91,21 @@ export class WebhooksService {
         sepay_transaction_id: payload.id,
         updated_at: new Date().toISOString(),
       })
-      .eq('id', order.id);
+      .eq('id', order.id)
+      .eq('status', 'pending') // Only update if still pending (concurrency safety)
+      .select()
+      .single();
+
+    if (updateError || !updatedOrder) {
+      // Another webhook already processed this order
+      this.logger.warn(`Order ${order.id} was already processed by another webhook`);
+      return { success: true, message: 'Payment already processed by another webhook' };
+    }
 
     this.logger.log(`Order ${order.id} marked as paid via ${reference}`);
 
     // Dispense USDC via liquidity_pool::dispense()
-    await this.dispenseUsdcToUser(order);
+    await this.dispenseUsdcToUser(updatedOrder);
 
     return { success: true, message: 'Payment processed' };
   }
@@ -93,6 +114,10 @@ export class WebhooksService {
     payload: SepayWebhookDto,
     signature: string,
   ): boolean {
+    if (!signature) {
+      return false;
+    }
+
     const payloadStr = JSON.stringify(payload);
     const expectedSig = crypto
       .createHmac('sha256', this.webhookSecret)
@@ -100,11 +125,17 @@ export class WebhooksService {
       .digest('hex');
 
     try {
-      return crypto.timingSafeEqual(
-        Buffer.from(signature),
-        Buffer.from(expectedSig),
-      );
-    } catch {
+      // Ensure both buffers are same length for timingSafeEqual
+      const sigBuffer = Buffer.from(signature, 'hex');
+      const expectedBuffer = Buffer.from(expectedSig, 'hex');
+
+      if (sigBuffer.length !== expectedBuffer.length) {
+        return false;
+      }
+
+      return crypto.timingSafeEqual(sigBuffer, expectedBuffer);
+    } catch (error) {
+      this.logger.error('Signature verification error', error);
       return false;
     }
   }

@@ -37,6 +37,22 @@ export class OrdersService {
     userId: string,
     dto: CreateBuyOrderDto,
   ): Promise<BuyOrderResponseDto> {
+    // Server-side amount validation
+    const MIN_AMOUNT_VND = 50000; // 50k VND minimum
+    const MAX_AMOUNT_VND = 100000000; // 100M VND maximum (reasonable limit)
+
+    if (dto.amountVnd < MIN_AMOUNT_VND) {
+      throw new BadRequestException(
+        `Minimum order amount is ${MIN_AMOUNT_VND.toLocaleString('vi-VN')} VND`,
+      );
+    }
+
+    if (dto.amountVnd > MAX_AMOUNT_VND) {
+      throw new BadRequestException(
+        `Maximum order amount is ${MAX_AMOUNT_VND.toLocaleString('vi-VN')} VND`,
+      );
+    }
+
     const rates = await this.ratesService.getCurrentRates();
     const amountUsdc = dto.amountVnd / rates.buyRate;
     const reference = this.vietQrService.generateReference();

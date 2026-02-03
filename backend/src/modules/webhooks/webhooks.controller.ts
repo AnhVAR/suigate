@@ -1,4 +1,5 @@
-import { Controller, Post, Body, Headers, HttpCode, Param } from '@nestjs/common';
+import { Controller, Post, Body, Headers, HttpCode, Param, UseGuards } from '@nestjs/common';
+import { ThrottlerGuard, Throttle } from '@nestjs/throttler';
 import { WebhooksService } from './webhooks.service';
 import {
   SepayWebhookDto,
@@ -6,11 +7,13 @@ import {
 } from './dto/sepay-payment-webhook.dto';
 
 @Controller('webhooks')
+@UseGuards(ThrottlerGuard)
 export class WebhooksController {
   constructor(private webhooksService: WebhooksService) {}
 
   @Post('sepay')
   @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60000 } }) // 10 requests per minute
   async handleSepay(
     @Body() payload: SepayWebhookDto,
     @Headers('x-sepay-signature') signature: string,
