@@ -36,36 +36,60 @@ export interface ZkLoginResult {
 }
 
 /**
- * Complete Google zkLogin flow
- * 1. Generate/load ephemeral keypair
- * 2. Initiate Google OAuth with nonce
- * 3. Get salt from Mysten service
- * 4. Generate ZK proof
- * 5. Derive Sui address
- * 6. Authenticate with backend
+ * Initiate Google zkLogin - opens browser, returns PENDING
+ * Call continueZkLoginWithJwt when OAuth callback received
  */
 export const loginWithGoogle = async (): Promise<ZkLoginResult> => {
   try {
     // 1. Get or create ephemeral keypair with nonce
     const ephemeralKey = await getOrCreateEphemeralKey();
+    console.log('[zkLogin] Created ephemeral key, initiating OAuth...');
 
-    // 2. Initiate Google OAuth with nonce
+    // 2. Initiate Google OAuth with nonce (opens browser, returns PENDING)
     const oauthResult = await initiateGoogleLogin(ephemeralKey.nonce);
 
-    if (!oauthResult.success || !oauthResult.jwt || !oauthResult.decodedJwt) {
-      return {
-        success: false,
-        error: oauthResult.error || 'OAuth failed',
-      };
+    // If PENDING, OAuth flow continues via deep link callback
+    if (oauthResult.error === 'PENDING') {
+      return { success: false, error: 'PENDING' };
     }
 
-    const { jwt, decodedJwt } = oauthResult;
+    // Unexpected: OAuth returned immediately (error case)
+    if (!oauthResult.success) {
+      return { success: false, error: oauthResult.error || 'OAuth failed' };
+    }
+
+    // Unexpected: OAuth returned JWT immediately - continue flow
+    return continueZkLoginWithJwt(oauthResult.jwt!, oauthResult.decodedJwt!);
+  } catch (error) {
+    console.error('Google zkLogin error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Login failed',
+    };
+  }
+};
+
+/**
+ * Continue zkLogin flow after receiving JWT from OAuth callback
+ * Steps 3-8: salt, proof, address, cache, backend auth
+ */
+export const continueZkLoginWithJwt = async (
+  jwt: string,
+  decodedJwt: { sub: string; email?: string; aud: string | string[] }
+): Promise<ZkLoginResult> => {
+  try {
+    console.log('[zkLogin] Continuing with JWT...');
     const userId = decodedJwt.sub;
 
+    // Load ephemeral key (created in loginWithGoogle)
+    const ephemeralKey = await getOrCreateEphemeralKey();
+
     // 3. Get salt from Mysten salt service
+    console.log('[zkLogin] Getting salt...');
     const salt = await getSalt(jwt, userId);
 
     // 4. Generate ZK proof from Mysten prover
+    console.log('[zkLogin] Generating ZK proof...');
     const keypair = await reconstructKeypair(ephemeralKey);
     const extendedPubKey = await getExtendedPubKey(keypair);
 
@@ -78,6 +102,7 @@ export const loginWithGoogle = async (): Promise<ZkLoginResult> => {
     });
 
     // 5. Derive Sui address and address seed
+    console.log('[zkLogin] Deriving address...');
     const { suiAddress, addressSeed } = await getAddressData(jwt, salt);
 
     // 6. Cache proof for session persistence
@@ -86,6 +111,7 @@ export const loginWithGoogle = async (): Promise<ZkLoginResult> => {
     );
 
     // 7. Authenticate with backend
+    console.log('[zkLogin] Authenticating with backend...');
     const backendResponse = await authZkLoginApiService.zkLogin({
       jwt,
       suiAddress,
@@ -102,6 +128,7 @@ export const loginWithGoogle = async (): Promise<ZkLoginResult> => {
       maxEpoch: ephemeralKey.maxEpoch,
     };
 
+    console.log('[zkLogin] Login complete!', { suiAddress });
     return {
       success: true,
       suiAddress,
@@ -112,7 +139,7 @@ export const loginWithGoogle = async (): Promise<ZkLoginResult> => {
       zkLoginData,
     };
   } catch (error) {
-    console.error('Google zkLogin error:', error);
+    console.error('[zkLogin] Continue error:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Login failed',
