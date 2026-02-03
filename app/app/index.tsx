@@ -3,7 +3,7 @@ import { useAuthStore } from '../src/stores/authentication-store';
 import { View, ActivityIndicator } from 'react-native';
 
 export default function Index() {
-  const { isAuthenticated, isLoading } = useAuthStore();
+  const { isAuthenticated, isLoading, kycStatus, locationStatus } = useAuthStore();
 
   if (isLoading) {
     return (
@@ -13,9 +13,20 @@ export default function Index() {
     );
   }
 
-  if (isAuthenticated) {
-    return <Redirect href="/(tabs)/wallet" />;
+  if (!isAuthenticated) {
+    return <Redirect href="/(auth)/login" />;
   }
 
-  return <Redirect href="/(auth)/login" />;
+  // Check KYC status - if not verified, go to KYC flow
+  if (kycStatus !== 'verified') {
+    return <Redirect href="/(auth)/kyc-verification" />;
+  }
+
+  // Check location status - if not verified, go to location verification
+  if (locationStatus !== 'within_sandbox') {
+    return <Redirect href="/(auth)/location-verification" />;
+  }
+
+  // All verified - go to wallet
+  return <Redirect href="/(tabs)/wallet" />;
 }
