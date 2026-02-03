@@ -114,6 +114,52 @@ export class WebhooksService {
     return match ? match[0] : null;
   }
 
+  /**
+   * Simulate SePay payment for sandbox testing
+   * Creates a fake webhook payload and processes it
+   */
+  async simulatePayment(reference: string): Promise<SepayWebhookResponse> {
+    // Only allow in development
+    if (process.env.NODE_ENV === 'production') {
+      return { success: false, message: 'Simulation not allowed in production' };
+    }
+
+    // Find order by reference
+    const { data: order, error } = await this.supabase
+      .getClient()
+      .from('orders')
+      .select('*')
+      .eq('sepay_reference', reference)
+      .eq('status', 'pending')
+      .single();
+
+    if (error || !order) {
+      this.logger.warn(`Order not found for simulation: ${reference}`);
+      return { success: false, message: 'Order not found or not pending' };
+    }
+
+    // Create simulated webhook payload
+    const simulatedPayload: SepayWebhookDto = {
+      id: Date.now(),
+      gateway: 'Simulated_MBBank',
+      transactionDate: new Date().toISOString().replace('T', ' ').slice(0, 19),
+      accountNumber: this.config.get<string>('sepay.accountNumber') || '0123456789',
+      subAccount: null,
+      code: null,
+      content: reference,
+      transferType: 'in',
+      description: `Simulated payment for ${reference}`,
+      transferAmount: order.amount_vnd,
+      referenceCode: `SIM-${Date.now()}`,
+      accumulated: 0,
+    };
+
+    this.logger.log(`Simulating payment for ${reference}: ${order.amount_vnd} VND`);
+
+    // Process using existing webhook handler (skip signature in dev)
+    return this.handleSepayWebhook(simulatedPayload, '');
+  }
+
   /** Dispense USDC to user after VND payment confirmed */
   private async dispenseUsdcToUser(order: any): Promise<void> {
     try {

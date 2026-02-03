@@ -1,9 +1,12 @@
 /**
  * Trading Service
- * Handles order creation, rate fetching, and VietQR generation (mock)
+ * Handles order creation, rate fetching, and VietQR generation
+ * Uses real backend API for order creation
  */
 
-const MOCK_RATE = 25000; // VND per USDC
+import { ordersBuySellApiService } from '../api/orders-buy-sell-api-service';
+
+const MOCK_RATE = 25000; // VND per USDC (fallback)
 const BUY_FEE = 0.005; // 0.5%
 const QUICK_SELL_FEE = 0.005; // 0.5%
 const SMART_SELL_FEE = 0.002; // 0.2%
@@ -43,38 +46,37 @@ export const getCurrentRate = async (): Promise<number> => {
 
 /**
  * Create a buy USDC order with VietQR payment
+ * Calls real backend API to create order in database
  */
 export const createBuyOrder = async (
   amountVnd: number
 ): Promise<CreateBuyOrderResult> => {
-  await new Promise((r) => setTimeout(r, 800));
+  try {
+    // Call real backend API
+    const response = await ordersBuySellApiService.createBuyOrder({ amountVnd });
 
-  const rate = await getCurrentRate();
-  const fee = amountVnd * BUY_FEE;
-  const netVnd = amountVnd - fee;
-  const amountUsdc = netVnd / rate;
+    // QR data format for VietQR (simplified for local generation)
+    const qrData = JSON.stringify({
+      bank: 'MB',
+      account: '0123456789',
+      amount: amountVnd,
+      reference: response.reference,
+      message: `SuiGate ${response.reference}`,
+    });
 
-  const reference = `SG-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
-  const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
-
-  // QR data format for VietQR (simplified for local generation)
-  const qrData = JSON.stringify({
-    bank: 'VCB',
-    account: '0123456789',
-    amount: amountVnd,
-    reference,
-    message: `SuiGate ${reference}`,
-  });
-
-  return {
-    orderId: `order-${Date.now()}`,
-    amountVnd,
-    amountUsdc: Math.round(amountUsdc * 100) / 100,
-    rate,
-    qrData,
-    reference,
-    expiresAt,
-  };
+    return {
+      orderId: response.orderId,
+      amountVnd: response.amountVnd,
+      amountUsdc: parseFloat(response.amountUsdc),
+      rate: response.rate,
+      qrData: response.qrCode || qrData,
+      reference: response.reference,
+      expiresAt: new Date(response.expiresAt),
+    };
+  } catch (error) {
+    console.error('Failed to create buy order via API:', error);
+    throw error;
+  }
 };
 
 /**

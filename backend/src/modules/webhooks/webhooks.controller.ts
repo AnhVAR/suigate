@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Headers, HttpCode } from '@nestjs/common';
+import { Controller, Post, Body, Headers, HttpCode, Param } from '@nestjs/common';
 import { WebhooksService } from './webhooks.service';
 import {
   SepayWebhookDto,
@@ -16,5 +16,17 @@ export class WebhooksController {
     @Headers('x-sepay-signature') signature: string,
   ): Promise<SepayWebhookResponse> {
     return this.webhooksService.handleSepayWebhook(payload, signature || '');
+  }
+
+  /**
+   * Simulate SePay payment for sandbox testing
+   * Only available in development mode
+   */
+  @Post('sepay/simulate/:reference')
+  @HttpCode(200)
+  async simulatePayment(
+    @Param('reference') reference: string,
+  ): Promise<SepayWebhookResponse> {
+    return this.webhooksService.simulatePayment(reference);
   }
 }

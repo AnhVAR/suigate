@@ -29,13 +29,21 @@
 0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC
 ```
 
-| **LiquidityPool** | Shared | `0x4abfd52ee4a3f5379bc74c46851370edd93f240afe7c9c04d31fd77b8ee81e29` |
+| **LiquidityPool (USDC)** | Shared | `0x4abfd52ee4a3f5379bc74c46851370edd93f240afe7c9c04d31fd77b8ee81e29` |
+| **LiquidityPool (TEST_USDC)** | Shared | `0xe0f7eb856e2fba778e75863289851cebd7ec38e7af27321e70fda7d117d0d5c0` |
+
+## TEST_USDC (for development)
+
+```
+0xfda5e7d874aee36569b18e6df8c62693e93c8dfa76e317543aa9bb827ed91d13::test_usdc::TEST_USDC
+```
 
 ## Next Steps
 
 1. ~~Create USDC LiquidityPool via `liquidity_pool::create_pool<USDC>`~~ ✅ Done
-2. Update PriceOracle with VND/USDC rates via `price_oracle::update_rates`
-3. Integrate with backend API
+2. ~~Create TEST_USDC LiquidityPool for development~~ ✅ Done (10,000 TEST_USDC deposited)
+3. Update PriceOracle with VND/USDC rates via `price_oracle::update_rates`
+4. Integrate with backend API
 
 ## Explorer Links
 
