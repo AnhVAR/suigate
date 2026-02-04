@@ -7,7 +7,7 @@ import { Button } from '../ui/button';
 import { OrderStatusBadge } from './order-status-badge';
 import { OrderTypeBadge } from './order-type-badge';
 import { UpdateStatusDialog } from './update-status-dialog';
-import { useUpdateOrderStatus, useConfirmPayment, useDispenseUsdc, useDisburseVnd } from '../../hooks/use-orders';
+import { useUpdateOrderStatus, useConfirmPayment, useDispenseUsdc, useDisburseVnd, useSimulatePayment } from '../../hooks/use-orders';
 import { Separator } from '../ui/separator';
 
 interface OrderDetailPanelProps {
@@ -23,6 +23,7 @@ export function OrderDetailPanel({ order, open, onOpenChange }: OrderDetailPanel
   const confirmPayment = useConfirmPayment();
   const dispenseUsdc = useDispenseUsdc();
   const disburseVnd = useDisburseVnd();
+  const simulatePayment = useSimulatePayment();
 
   if (!order) return null;
 
@@ -52,6 +53,16 @@ export function OrderDetailPanel({ order, open, onOpenChange }: OrderDetailPanel
   const handleDisburseVnd = () => {
     if (confirm('Disburse VND for this order?')) {
       disburseVnd.mutate(order.id);
+    }
+  };
+
+  const handleSimulatePayment = () => {
+    if (!order.sepay_reference) {
+      alert('No SePay reference found for this order');
+      return;
+    }
+    if (confirm('Simulate payment for this order? This will trigger the webhook as if bank transfer was received.')) {
+      simulatePayment.mutate(order.sepay_reference);
     }
   };
 
@@ -211,14 +222,24 @@ export function OrderDetailPanel({ order, open, onOpenChange }: OrderDetailPanel
                 </Button>
 
                 {order.order_type === 'buy' && order.status === 'pending' && (
-                  <Button
-                    onClick={handleConfirmPayment}
-                    variant="outline"
-                    disabled={confirmPayment.isPending}
-                    className="w-full"
-                  >
-                    {confirmPayment.isPending ? 'Confirming...' : 'Confirm Payment'}
-                  </Button>
+                  <>
+                    <Button
+                      onClick={handleSimulatePayment}
+                      variant="outline"
+                      disabled={simulatePayment.isPending || !order.sepay_reference}
+                      className="w-full bg-green-600 hover:bg-green-700 text-white border-green-600"
+                    >
+                      {simulatePayment.isPending ? 'Simulating...' : '🧪 Simulate Payment'}
+                    </Button>
+                    <Button
+                      onClick={handleConfirmPayment}
+                      variant="outline"
+                      disabled={confirmPayment.isPending}
+                      className="w-full"
+                    >
+                      {confirmPayment.isPending ? 'Confirming...' : 'Confirm Payment'}
+                    </Button>
+                  </>
                 )}
 
                 {order.order_type === 'buy' && order.status === 'paid' && (

@@ -221,7 +221,6 @@ export default function ConvertScreen() {
             expiresAt={orderData.expiresAt || new Date()}
             onExpired={handleReset}
             onCancel={handleReset}
-            onPaymentSuccess={() => setStep('success')}
           />
         </ScrollView>
       </SafeAreaView>

@@ -76,16 +76,4 @@ export const ordersBuySellApiService = {
   cancelOrder: async (orderId: string): Promise<void> => {
     return apiClient.delete<void>(`/orders/${orderId}`);
   },
-
-  /**
-   * Simulate SePay payment (sandbox only)
-   * For testing buy USDC flow without real bank transfer
-   */
-  simulatePayment: async (
-    reference: string
-  ): Promise<{ success: boolean; message?: string }> => {
-    return apiClient.post<{ success: boolean; message?: string }>(
-      `/webhooks/sepay/simulate/${reference}`
-    );
-  },
 };

@@ -5,10 +5,9 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, TouchableOpacity } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import QRCode from 'react-native-qrcode-svg';
-import { ordersBuySellApiService } from '../../api/orders-buy-sell-api-service';
 
 interface VietQRPaymentDisplayProps {
   qrData: string;
@@ -17,7 +16,6 @@ interface VietQRPaymentDisplayProps {
   expiresAt: Date;
   onExpired?: () => void;
   onCancel?: () => void;
-  onPaymentSuccess?: () => void;
 }
 
 export const VietQRPaymentDisplay: React.FC<VietQRPaymentDisplayProps> = ({
@@ -27,31 +25,8 @@ export const VietQRPaymentDisplay: React.FC<VietQRPaymentDisplayProps> = ({
   expiresAt,
   onExpired,
   onCancel,
-  onPaymentSuccess,
 }) => {
   const [timeLeft, setTimeLeft] = useState<number>(0);
-  const [isSimulating, setIsSimulating] = useState(false);
-
-  // Check if running in development mode
-  const isDev = __DEV__;
-
-  const handleSimulatePayment = async () => {
-    setIsSimulating(true);
-    try {
-      const result = await ordersBuySellApiService.simulatePayment(reference);
-      if (result.success) {
-        Alert.alert('Success', 'Payment simulated successfully!', [
-          { text: 'OK', onPress: onPaymentSuccess },
-        ]);
-      } else {
-        Alert.alert('Error', result.message || 'Failed to simulate payment');
-      }
-    } catch {
-      Alert.alert('Error', 'Failed to simulate payment');
-    } finally {
-      setIsSimulating(false);
-    }
-  };
 
   useEffect(() => {
     const updateTimer = () => {
@@ -138,27 +113,6 @@ export const VietQRPaymentDisplay: React.FC<VietQRPaymentDisplayProps> = ({
           Your USDC will be credited automatically.
         </Text>
       </View>
-
-      {/* Simulate Payment Button (Dev only) */}
-      {isDev && !isExpired && (
-        <TouchableOpacity
-          onPress={handleSimulatePayment}
-          disabled={isSimulating}
-          className="w-full bg-green-500 rounded-xl py-4 mb-4"
-          style={{ opacity: isSimulating ? 0.7 : 1 }}
-        >
-          <View className="flex-row items-center justify-center">
-            <MaterialIcons
-              name={isSimulating ? 'hourglass-empty' : 'play-circle-filled'}
-              size={20}
-              color="white"
-            />
-            <Text className="text-white font-semibold ml-2">
-              {isSimulating ? 'Processing...' : '🧪 Simulate Payment (Dev)'}
-            </Text>
-          </View>
-        </TouchableOpacity>
-      )}
 
       {/* Cancel Button */}
       {onCancel && !isExpired && (

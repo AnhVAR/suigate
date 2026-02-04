@@ -63,3 +63,14 @@ export function useDisburseVnd() {
     },
   });
 }
+
+export function useSimulatePayment() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (reference: string) => ordersApi.simulatePayment(reference),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-orders'] });
+    },
+  });
+}

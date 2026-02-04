@@ -47,4 +47,14 @@ export const ordersApi = {
   disburseVnd: async (id: string): Promise<AdminOrderDto> => {
     return apiClient.post<AdminOrderDto>(`/admin/orders/${id}/disburse-vnd`);
   },
+
+  /**
+   * Simulate SePay payment (sandbox/testing)
+   * For testing buy USDC flow without real bank transfer
+   */
+  simulatePayment: async (reference: string): Promise<{ success: boolean; message?: string }> => {
+    return apiClient.post<{ success: boolean; message?: string }>(
+      `/webhooks/sepay/simulate/${reference}`
+    );
+  },
 };
