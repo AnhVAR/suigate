@@ -11,8 +11,11 @@
   "scripts": {
     "app": "npm run --workspace=app",
     "backend": "npm run --workspace=backend",
+    "admin": "npm run --workspace=admin",
     "app:start": "npm run start --workspace=app",
     "backend:start": "npm run start:dev --workspace=backend",
+    "admin:dev": "npm run dev --workspace=admin",
+    "admin:build": "npm run build --workspace=admin",
     "contracts:build": "cd contracts && sui move build",
     "contracts:test": "cd contracts && sui move test",
     "install:all": "npm install && cd contracts && sui move build"

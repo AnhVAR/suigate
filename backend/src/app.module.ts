@@ -7,6 +7,7 @@ import { AppService } from './app.service';
 import { SupabaseModule } from './common/supabase/supabase.module';
 import { SuiModule } from './common/sui/sui.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { AdminModule } from './modules/admin/admin.module';
 import { UsersModule } from './modules/users/users.module';
 import { OrdersModule } from './modules/orders/orders.module';
 import { WalletModule } from './modules/wallet/wallet.module';
@@ -31,6 +32,7 @@ import configuration from './config/configuration';
     SupabaseModule,
     SuiModule,
     AuthModule,
+    AdminModule,
     UsersModule,
     OrdersModule,
     WalletModule,
