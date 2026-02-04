@@ -46,7 +46,7 @@ export default function OrdersPage() {
     if (filters.search) params.set('search', filters.search);
 
     const queryString = params.toString();
-    router.replace(`/orders${queryString ? `?${queryString}` : ''}`, { scroll: false });
+    router.replace(`/dashboard/orders${queryString ? `?${queryString}` : ''}`, { scroll: false });
   }, [filters, router]);
 
   const handleRowClick = (order: AdminOrderDto) => {

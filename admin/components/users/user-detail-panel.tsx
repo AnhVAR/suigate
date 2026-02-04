@@ -205,7 +205,7 @@ export function UserDetailPanel({ user, open, onOpenChange, isAdmin = false }: U
                       key={order.id}
                       className="p-3 border rounded-md text-sm hover:bg-gray-50 cursor-pointer"
                       onClick={() => {
-                        router.push(`/orders?orderId=${order.id}`);
+                        router.push(`/dashboard/orders?orderId=${order.id}`);
                         onOpenChange(false);
                       }}
                     >
