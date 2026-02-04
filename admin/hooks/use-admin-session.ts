@@ -51,7 +51,7 @@ export function useAdminSession() {
   const logout = () => {
     clearAdminSession();
     setUser(null);
-    router.push('/login');
+    router.push('/auth/login');
   };
 
   return {
