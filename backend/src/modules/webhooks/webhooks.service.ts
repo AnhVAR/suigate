@@ -150,8 +150,9 @@ export class WebhooksService {
    * Creates a fake webhook payload and processes it
    */
   async simulatePayment(reference: string): Promise<SepayWebhookResponse> {
-    // Only allow in development
-    if (process.env.NODE_ENV === 'production') {
+    // Allow simulation if ALLOW_PAYMENT_SIMULATION=true (for staging/testing on deployed env)
+    const allowSimulation = this.config.get<string>('ALLOW_PAYMENT_SIMULATION') === 'true';
+    if (process.env.NODE_ENV === 'production' && !allowSimulation) {
       return { success: false, message: 'Simulation not allowed in production' };
     }
 
