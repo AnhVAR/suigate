@@ -25,7 +25,7 @@ export function OrdersTable({ orders, onRowClick }: OrdersTableProps) {
         accessorKey: 'id',
         header: 'Order ID',
         cell: ({ row }) => (
-          <span className="font-mono text-sm" title={row.original.id}>
+          <span className="font-mono text-sm text-muted-foreground" title={row.original.id}>
             {truncateId(row.original.id)}
           </span>
         ),
@@ -39,7 +39,7 @@ export function OrdersTable({ orders, onRowClick }: OrdersTableProps) {
         accessorKey: 'amount_usdc',
         header: 'USDC',
         cell: ({ row }) => (
-          <span className="font-medium">
+          <span className="font-medium text-foreground">
             {row.original.amount_usdc ? formatUsdc(row.original.amount_usdc) : '—'}
           </span>
         ),
@@ -48,7 +48,7 @@ export function OrdersTable({ orders, onRowClick }: OrdersTableProps) {
         accessorKey: 'amount_vnd',
         header: 'VND',
         cell: ({ row }) => (
-          <span className="font-medium">
+          <span className="font-medium text-foreground">
             {row.original.amount_vnd ? formatVnd(row.original.amount_vnd) : '—'}
           </span>
         ),
@@ -62,7 +62,7 @@ export function OrdersTable({ orders, onRowClick }: OrdersTableProps) {
         accessorKey: 'user_sui_address',
         header: 'User',
         cell: ({ row }) => (
-          <span className="font-mono text-sm" title={row.original.user_sui_address}>
+          <span className="font-mono text-sm text-muted-foreground" title={row.original.user_sui_address}>
             {truncateAddress(row.original.user_sui_address)}
           </span>
         ),
@@ -71,7 +71,7 @@ export function OrdersTable({ orders, onRowClick }: OrdersTableProps) {
         accessorKey: 'created_at',
         header: 'Created',
         cell: ({ row }) => (
-          <span className="text-sm text-gray-600">
+          <span className="text-sm text-muted-foreground">
             {formatRelativeTime(row.original.created_at)}
           </span>
         ),
@@ -87,6 +87,7 @@ export function OrdersTable({ orders, onRowClick }: OrdersTableProps) {
               e.stopPropagation();
               onRowClick(row.original);
             }}
+            className="cursor-pointer"
           >
             View
           </Button>
@@ -104,45 +105,43 @@ export function OrdersTable({ orders, onRowClick }: OrdersTableProps) {
 
   if (orders.length === 0) {
     return (
-      <div className="text-center py-12 text-gray-500">
-        No orders found matching your filters.
+      <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+        <p className="text-sm">No orders found matching your filters.</p>
       </div>
     );
   }
 
   return (
-    <div className="rounded-md border">
-      <Table>
-        <TableHeader>
-          {table.getHeaderGroups().map((headerGroup) => (
-            <TableRow key={headerGroup.id}>
-              {headerGroup.headers.map((header) => (
-                <TableHead key={header.id}>
-                  {header.isPlaceholder
-                    ? null
-                    : flexRender(header.column.columnDef.header, header.getContext())}
-                </TableHead>
-              ))}
-            </TableRow>
-          ))}
-        </TableHeader>
-        <TableBody>
-          {table.getRowModel().rows.map((row) => (
-            <TableRow
-              key={row.id}
-              onClick={() => onRowClick(row.original)}
-              className="cursor-pointer hover:bg-gray-50"
-            >
-              {row.getVisibleCells().map((cell) => (
-                <TableCell key={cell.id}>
-                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                </TableCell>
-              ))}
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
+    <Table>
+      <TableHeader>
+        {table.getHeaderGroups().map((headerGroup) => (
+          <TableRow key={headerGroup.id} className="border-border/50 hover:bg-transparent">
+            {headerGroup.headers.map((header) => (
+              <TableHead key={header.id} className="text-muted-foreground font-medium">
+                {header.isPlaceholder
+                  ? null
+                  : flexRender(header.column.columnDef.header, header.getContext())}
+              </TableHead>
+            ))}
+          </TableRow>
+        ))}
+      </TableHeader>
+      <TableBody>
+        {table.getRowModel().rows.map((row) => (
+          <TableRow
+            key={row.id}
+            onClick={() => onRowClick(row.original)}
+            className="cursor-pointer border-border/50 transition-colors hover:bg-accent/50"
+          >
+            {row.getVisibleCells().map((cell) => (
+              <TableCell key={cell.id}>
+                {flexRender(cell.column.columnDef.cell, cell.getContext())}
+              </TableCell>
+            ))}
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
   );
 }
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { Zap } from 'lucide-react';
 import { GoogleLoginButton } from '@/components/auth/google-login-button';
 import { parseOAuthCallback, authenticateAdmin } from '@/lib/zklogin-web-auth';
 import { setAdminSession } from '@/lib/admin-session';
@@ -52,29 +53,39 @@ function LoginContent() {
   }, [router, searchParams]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="max-w-md w-full space-y-8 p-8 bg-white rounded-lg shadow">
+    <div className="flex min-h-screen items-center justify-center bg-background p-4">
+      {/* Background gradient */}
+      <div className="pointer-events-none fixed inset-0 overflow-hidden">
+        <div className="absolute -top-40 -right-40 h-80 w-80 rounded-full bg-primary/10 blur-3xl" />
+        <div className="absolute -bottom-40 -left-40 h-80 w-80 rounded-full bg-purple-500/10 blur-3xl" />
+      </div>
+
+      <div className="relative w-full max-w-md space-y-8 rounded-2xl border border-border/50 bg-card p-8 shadow-xl">
+        {/* Logo & Header */}
         <div className="text-center">
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">
-            SuiGate
-          </h1>
-          <h2 className="text-xl font-semibold text-gray-700">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+            <Zap className="h-8 w-8" />
+          </div>
+          <h1 className="text-3xl font-bold tracking-tight">SuiGate</h1>
+          <h2 className="mt-1 text-lg font-medium text-muted-foreground">
             Admin Dashboard
           </h2>
-          <p className="mt-2 text-sm text-gray-600">
+          <p className="mt-3 text-sm text-muted-foreground">
             Sign in to access the admin panel
           </p>
         </div>
 
+        {/* Error Message */}
         {error && (
-          <div className="rounded-md bg-red-50 p-4">
-            <p className="text-sm text-red-800">{error}</p>
+          <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4">
+            <p className="text-sm text-destructive">{error}</p>
           </div>
         )}
 
+        {/* Loading or Login Button */}
         {isLoading ? (
           <div className="flex justify-center py-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
           </div>
         ) : (
           <div className="mt-8">
@@ -82,7 +93,8 @@ function LoginContent() {
           </div>
         )}
 
-        <p className="mt-4 text-xs text-center text-gray-500">
+        {/* Footer */}
+        <p className="text-center text-xs text-muted-foreground">
           Only authorized admin users can access this portal
         </p>
       </div>
@@ -92,11 +104,13 @@ function LoginContent() {
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
-    }>
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-background">
+          <div className="h-10 w-10 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        </div>
+      }
+    >
       <LoginContent />
     </Suspense>
   );

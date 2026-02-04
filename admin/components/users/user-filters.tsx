@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { Search, X } from 'lucide-react';
 import type { AdminUsersQueryParams } from '../../types/users';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -56,17 +57,19 @@ export function UserFilters({ filters, onFiltersChange }: UserFiltersProps) {
     onFiltersChange({ page: 1, limit: filters.limit });
   };
 
+  const hasActiveFilters = filters.kyc_status || filters.location_verified || filters.is_locked || searchInput;
+
   return (
-    <div className="space-y-4 p-4 bg-white rounded-lg border">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="space-y-4 rounded-xl border border-border/50 bg-card p-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
         {/* KYC Status */}
         <div className="space-y-2">
-          <Label>KYC Status</Label>
+          <Label className="text-muted-foreground">KYC Status</Label>
           <Select
             value={filters.kyc_status || 'all'}
             onValueChange={handleKycStatusChange}
           >
-            <SelectTrigger>
+            <SelectTrigger className="bg-background border-border/50">
               <SelectValue placeholder="All statuses" />
             </SelectTrigger>
             <SelectContent>
@@ -80,26 +83,31 @@ export function UserFilters({ filters, onFiltersChange }: UserFiltersProps) {
 
         {/* Search */}
         <div className="space-y-2">
-          <Label>Search</Label>
-          <Input
-            placeholder="Address or Google ID..."
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-          />
+          <Label className="text-muted-foreground">Search</Label>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Address or Google ID..."
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              className="bg-background border-border/50 pl-9"
+            />
+          </div>
         </div>
 
         {/* Location Verified */}
         <div className="space-y-2">
-          <Label>Location</Label>
-          <div className="flex items-center space-x-2 h-10">
+          <Label className="text-muted-foreground">Location</Label>
+          <div className="flex h-10 items-center space-x-2">
             <Checkbox
               id="location-verified"
               checked={filters.location_verified || false}
               onCheckedChange={handleLocationVerifiedChange}
+              className="border-border/50 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
             />
             <label
               htmlFor="location-verified"
-              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+              className="cursor-pointer text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
             >
               Verified Only
             </label>
@@ -108,16 +116,17 @@ export function UserFilters({ filters, onFiltersChange }: UserFiltersProps) {
 
         {/* Locked */}
         <div className="space-y-2">
-          <Label>Account Status</Label>
-          <div className="flex items-center space-x-2 h-10">
+          <Label className="text-muted-foreground">Account Status</Label>
+          <div className="flex h-10 items-center space-x-2">
             <Checkbox
               id="is-locked"
               checked={filters.is_locked || false}
               onCheckedChange={handleLockedChange}
+              className="border-border/50 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
             />
             <label
               htmlFor="is-locked"
-              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+              className="cursor-pointer text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
             >
               Locked Only
             </label>
@@ -126,11 +135,19 @@ export function UserFilters({ filters, onFiltersChange }: UserFiltersProps) {
       </div>
 
       {/* Clear Filters Button */}
-      <div className="flex justify-end">
-        <Button variant="outline" onClick={handleClearFilters}>
-          Clear Filters
-        </Button>
-      </div>
+      {hasActiveFilters && (
+        <div className="flex justify-end">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleClearFilters}
+            className="cursor-pointer text-muted-foreground hover:text-foreground"
+          >
+            <X className="mr-1.5 h-4 w-4" />
+            Clear Filters
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

@@ -27,13 +27,13 @@ export function UsersTable({ users, onRowClick }: UsersTableProps) {
         header: 'Address',
         cell: ({ row }) => (
           <div className="flex items-center gap-2">
-            <span className="font-mono text-sm" title={row.original.sui_address}>
+            <span className="font-mono text-sm text-muted-foreground" title={row.original.sui_address}>
               {truncateAddress(row.original.sui_address)}
             </span>
             <Button
               variant="ghost"
               size="sm"
-              className="h-6 w-6 p-0"
+              className="h-6 w-6 p-0 cursor-pointer text-muted-foreground hover:text-foreground"
               onClick={(e) => {
                 e.stopPropagation();
                 copyToClipboard(row.original.sui_address);
@@ -55,9 +55,9 @@ export function UsersTable({ users, onRowClick }: UsersTableProps) {
         cell: ({ row }) => (
           <div className="flex justify-center">
             {row.original.location_verified ? (
-              <Check className="h-5 w-5 text-green-600" />
+              <Check className="h-5 w-5 text-emerald-400" />
             ) : (
-              <X className="h-5 w-5 text-gray-400" />
+              <X className="h-5 w-5 text-muted-foreground/50" />
             )}
           </div>
         ),
@@ -71,14 +71,14 @@ export function UsersTable({ users, onRowClick }: UsersTableProps) {
         accessorKey: 'order_count',
         header: 'Orders',
         cell: ({ row }) => (
-          <span className="font-medium">{row.original.order_count}</span>
+          <span className="font-medium text-foreground">{row.original.order_count}</span>
         ),
       },
       {
         accessorKey: 'total_volume_usdc',
         header: 'Volume',
         cell: ({ row }) => (
-          <span className="font-medium">
+          <span className="font-medium text-foreground">
             {formatUsdc(row.original.total_volume_usdc)}
           </span>
         ),
@@ -87,7 +87,7 @@ export function UsersTable({ users, onRowClick }: UsersTableProps) {
         accessorKey: 'created_at',
         header: 'Joined',
         cell: ({ row }) => (
-          <span className="text-sm text-gray-600">
+          <span className="text-sm text-muted-foreground">
             {formatDate(row.original.created_at)}
           </span>
         ),
@@ -103,6 +103,7 @@ export function UsersTable({ users, onRowClick }: UsersTableProps) {
               e.stopPropagation();
               onRowClick(row.original);
             }}
+            className="cursor-pointer"
           >
             View
           </Button>
@@ -120,45 +121,43 @@ export function UsersTable({ users, onRowClick }: UsersTableProps) {
 
   if (users.length === 0) {
     return (
-      <div className="text-center py-12 text-gray-500">
-        No users found matching your filters.
+      <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+        <p className="text-sm">No users found matching your filters.</p>
       </div>
     );
   }
 
   return (
-    <div className="rounded-md border">
-      <Table>
-        <TableHeader>
-          {table.getHeaderGroups().map((headerGroup) => (
-            <TableRow key={headerGroup.id}>
-              {headerGroup.headers.map((header) => (
-                <TableHead key={header.id}>
-                  {header.isPlaceholder
-                    ? null
-                    : flexRender(header.column.columnDef.header, header.getContext())}
-                </TableHead>
-              ))}
-            </TableRow>
-          ))}
-        </TableHeader>
-        <TableBody>
-          {table.getRowModel().rows.map((row) => (
-            <TableRow
-              key={row.id}
-              onClick={() => onRowClick(row.original)}
-              className="cursor-pointer hover:bg-gray-50"
-            >
-              {row.getVisibleCells().map((cell) => (
-                <TableCell key={cell.id}>
-                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                </TableCell>
-              ))}
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
+    <Table>
+      <TableHeader>
+        {table.getHeaderGroups().map((headerGroup) => (
+          <TableRow key={headerGroup.id} className="border-border/50 hover:bg-transparent">
+            {headerGroup.headers.map((header) => (
+              <TableHead key={header.id} className="text-muted-foreground font-medium">
+                {header.isPlaceholder
+                  ? null
+                  : flexRender(header.column.columnDef.header, header.getContext())}
+              </TableHead>
+            ))}
+          </TableRow>
+        ))}
+      </TableHeader>
+      <TableBody>
+        {table.getRowModel().rows.map((row) => (
+          <TableRow
+            key={row.id}
+            onClick={() => onRowClick(row.original)}
+            className="cursor-pointer border-border/50 transition-colors hover:bg-accent/50"
+          >
+            {row.getVisibleCells().map((cell) => (
+              <TableCell key={cell.id}>
+                {flexRender(cell.column.columnDef.cell, cell.getContext())}
+              </TableCell>
+            ))}
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
   );
 }
 
@@ -183,5 +182,4 @@ function formatDate(dateString: string): string {
 
 function copyToClipboard(text: string) {
   navigator.clipboard.writeText(text);
-  // Toast notification would be shown here
 }

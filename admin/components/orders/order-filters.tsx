@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { Search, X } from 'lucide-react';
 import type { OrderFilters } from '../../types/orders';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -56,17 +57,19 @@ export function OrderFiltersComponent({ filters, onFiltersChange }: OrderFilters
     onFiltersChange({ page: 1, limit: filters.limit });
   };
 
+  const hasActiveFilters = filters.order_type || filters.status || filters.needs_manual_review || searchInput;
+
   return (
-    <div className="space-y-4 p-4 bg-white rounded-lg border">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="space-y-4 rounded-xl border border-border/50 bg-card p-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
         {/* Order Type */}
         <div className="space-y-2">
-          <Label>Order Type</Label>
+          <Label className="text-muted-foreground">Order Type</Label>
           <Select
             value={filters.order_type || 'all'}
             onValueChange={handleOrderTypeChange}
           >
-            <SelectTrigger>
+            <SelectTrigger className="bg-background border-border/50">
               <SelectValue placeholder="All types" />
             </SelectTrigger>
             <SelectContent>
@@ -80,12 +83,12 @@ export function OrderFiltersComponent({ filters, onFiltersChange }: OrderFilters
 
         {/* Status */}
         <div className="space-y-2">
-          <Label>Status</Label>
+          <Label className="text-muted-foreground">Status</Label>
           <Select
             value={filters.status || 'all'}
             onValueChange={handleStatusChange}
           >
-            <SelectTrigger>
+            <SelectTrigger className="bg-background border-border/50">
               <SelectValue placeholder="All statuses" />
             </SelectTrigger>
             <SelectContent>
@@ -102,26 +105,31 @@ export function OrderFiltersComponent({ filters, onFiltersChange }: OrderFilters
 
         {/* Search */}
         <div className="space-y-2">
-          <Label>Search</Label>
-          <Input
-            placeholder="Order ID, address, reference..."
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-          />
+          <Label className="text-muted-foreground">Search</Label>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Order ID, address, reference..."
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              className="bg-background border-border/50 pl-9"
+            />
+          </div>
         </div>
 
         {/* Manual Review */}
         <div className="space-y-2">
-          <Label>Filters</Label>
-          <div className="flex items-center space-x-2 h-10">
+          <Label className="text-muted-foreground">Filters</Label>
+          <div className="flex h-10 items-center space-x-2">
             <Checkbox
               id="manual-review"
               checked={filters.needs_manual_review || false}
               onCheckedChange={handleManualReviewChange}
+              className="border-border/50 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
             />
             <label
               htmlFor="manual-review"
-              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+              className="cursor-pointer text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
             >
               Needs Manual Review
             </label>
@@ -130,11 +138,19 @@ export function OrderFiltersComponent({ filters, onFiltersChange }: OrderFilters
       </div>
 
       {/* Clear Filters Button */}
-      <div className="flex justify-end">
-        <Button variant="outline" onClick={handleClearFilters}>
-          Clear Filters
-        </Button>
-      </div>
+      {hasActiveFilters && (
+        <div className="flex justify-end">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleClearFilters}
+            className="cursor-pointer text-muted-foreground hover:text-foreground"
+          >
+            <X className="mr-1.5 h-4 w-4" />
+            Clear Filters
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

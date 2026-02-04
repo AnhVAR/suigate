@@ -1,31 +1,35 @@
 import type { OrderType } from '../../types/orders';
 import { Badge } from '../ui/badge';
+import { cn } from '@/lib/utils';
 
 interface OrderTypeBadgeProps {
   type: OrderType;
 }
 
-export function OrderTypeBadge({ type }: OrderTypeBadgeProps) {
-  const variants: Record<OrderType, { label: string; className: string }> = {
-    buy: {
-      label: 'Buy',
-      className: 'bg-green-500 text-green-50 hover:bg-green-600'
-    },
-    quick_sell: {
-      label: 'Quick Sell',
-      className: 'bg-orange-500 text-orange-50 hover:bg-orange-600'
-    },
-    smart_sell: {
-      label: 'Smart Sell',
-      className: 'bg-blue-500 text-blue-50 hover:bg-blue-600'
-    },
-  };
+const typeConfig: Record<OrderType, { label: string; className: string }> = {
+  buy: {
+    label: 'Buy',
+    className: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
+  },
+  quick_sell: {
+    label: 'Quick Sell',
+    className: 'bg-orange-500/15 text-orange-400 border-orange-500/30',
+  },
+  smart_sell: {
+    label: 'Smart Sell',
+    className: 'bg-blue-500/15 text-blue-400 border-blue-500/30',
+  },
+};
 
-  const { label, className } = variants[type];
+export function OrderTypeBadge({ type }: OrderTypeBadgeProps) {
+  const config = typeConfig[type];
 
   return (
-    <Badge variant="default" className={className}>
-      {label}
+    <Badge
+      variant="outline"
+      className={cn('font-medium border', config.className)}
+    >
+      {config.label}
     </Badge>
   );
 }

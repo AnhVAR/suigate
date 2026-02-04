@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
+import { ShoppingCart } from 'lucide-react';
 import type { OrderFilters } from '../../../types/orders';
 import type { AdminOrderDto } from '../../../types/orders';
 import { useOrders } from '../../../hooks/use-orders';
@@ -59,11 +60,18 @@ export default function OrdersPage() {
   };
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold">Orders</h1>
-        <p className="text-gray-600 mt-2">Manage and monitor all orders across the platform</p>
+      <div className="flex items-start gap-4">
+        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
+          <ShoppingCart className="h-6 w-6 text-primary" />
+        </div>
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Orders</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Manage and monitor all orders across the platform
+          </p>
+        </div>
       </div>
 
       {/* Filters */}
@@ -71,32 +79,37 @@ export default function OrdersPage() {
 
       {/* Loading State */}
       {isLoading && (
-        <div className="space-y-4">
-          <Skeleton className="h-12 w-full" />
-          <Skeleton className="h-12 w-full" />
-          <Skeleton className="h-12 w-full" />
+        <div className="space-y-3">
+          <Skeleton className="h-12 w-full rounded-lg" />
+          <Skeleton className="h-12 w-full rounded-lg" />
+          <Skeleton className="h-12 w-full rounded-lg" />
+          <Skeleton className="h-12 w-full rounded-lg" />
         </div>
       )}
 
       {/* Error State */}
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <p className="text-red-800">Failed to load orders: {(error as Error).message}</p>
+        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4">
+          <p className="text-sm text-destructive">
+            Failed to load orders: {(error as Error).message}
+          </p>
         </div>
       )}
 
       {/* Orders Table */}
       {!isLoading && !error && data && (
         <>
-          <div className="bg-white rounded-lg border">
+          <div className="rounded-xl border border-border/50 bg-card overflow-hidden">
             <OrdersTable orders={data.orders} onRowClick={handleRowClick} />
           </div>
 
           {/* Pagination */}
           {data.totalPages > 1 && (
-            <div className="flex items-center justify-between px-4 py-3 bg-white border rounded-lg">
-              <div className="text-sm text-gray-700">
-                Showing page {data.page} of {data.totalPages} ({data.total} total orders)
+            <div className="flex items-center justify-between rounded-lg border border-border/50 bg-card px-4 py-3">
+              <div className="text-sm text-muted-foreground">
+                Showing page <span className="text-foreground font-medium">{data.page}</span> of{' '}
+                <span className="text-foreground font-medium">{data.totalPages}</span>{' '}
+                ({data.total} total orders)
               </div>
               <div className="flex gap-2">
                 <Button
@@ -104,6 +117,7 @@ export default function OrdersPage() {
                   size="sm"
                   onClick={() => handlePageChange(data.page - 1)}
                   disabled={data.page === 1}
+                  className="cursor-pointer"
                 >
                   Previous
                 </Button>
@@ -112,6 +126,7 @@ export default function OrdersPage() {
                   size="sm"
                   onClick={() => handlePageChange(data.page + 1)}
                   disabled={data.page === data.totalPages}
+                  className="cursor-pointer"
                 >
                   Next
                 </Button>

@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
+import { Users } from 'lucide-react';
 import type { AdminUsersQueryParams } from '../../../types/users';
-import type { AdminUserDto, AdminUserDetailDto } from '../../../types/users';
+import type { AdminUserDto } from '../../../types/users';
 import { useUsers, useUser } from '../../../hooks/use-users';
 import { UserFilters } from '../../../components/users/user-filters';
 import { UsersTable } from '../../../components/users/users-table';
@@ -65,11 +66,18 @@ export default function UsersPage() {
   const isAdmin = true; // TODO: Replace with actual admin role check
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold">Users</h1>
-        <p className="text-gray-600 mt-2">Manage user accounts, KYC status, and permissions</p>
+      <div className="flex items-start gap-4">
+        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-purple-500/10">
+          <Users className="h-6 w-6 text-purple-400" />
+        </div>
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Users</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Manage user accounts, KYC status, and permissions
+          </p>
+        </div>
       </div>
 
       {/* Filters */}
@@ -77,32 +85,37 @@ export default function UsersPage() {
 
       {/* Loading State */}
       {isLoading && (
-        <div className="space-y-4">
-          <Skeleton className="h-12 w-full" />
-          <Skeleton className="h-12 w-full" />
-          <Skeleton className="h-12 w-full" />
+        <div className="space-y-3">
+          <Skeleton className="h-12 w-full rounded-lg" />
+          <Skeleton className="h-12 w-full rounded-lg" />
+          <Skeleton className="h-12 w-full rounded-lg" />
+          <Skeleton className="h-12 w-full rounded-lg" />
         </div>
       )}
 
       {/* Error State */}
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <p className="text-red-800">Failed to load users: {(error as Error).message}</p>
+        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4">
+          <p className="text-sm text-destructive">
+            Failed to load users: {(error as Error).message}
+          </p>
         </div>
       )}
 
       {/* Users Table */}
       {!isLoading && !error && data && (
         <>
-          <div className="bg-white rounded-lg border">
+          <div className="rounded-xl border border-border/50 bg-card overflow-hidden">
             <UsersTable users={data.users} onRowClick={handleRowClick} />
           </div>
 
           {/* Pagination */}
           {data.totalPages > 1 && (
-            <div className="flex items-center justify-between px-4 py-3 bg-white border rounded-lg">
-              <div className="text-sm text-gray-700">
-                Showing page {data.page} of {data.totalPages} ({data.total} total users)
+            <div className="flex items-center justify-between rounded-lg border border-border/50 bg-card px-4 py-3">
+              <div className="text-sm text-muted-foreground">
+                Showing page <span className="text-foreground font-medium">{data.page}</span> of{' '}
+                <span className="text-foreground font-medium">{data.totalPages}</span>{' '}
+                ({data.total} total users)
               </div>
               <div className="flex gap-2">
                 <Button
@@ -110,6 +123,7 @@ export default function UsersPage() {
                   size="sm"
                   onClick={() => handlePageChange(data.page - 1)}
                   disabled={data.page === 1}
+                  className="cursor-pointer"
                 >
                   Previous
                 </Button>
@@ -118,6 +132,7 @@ export default function UsersPage() {
                   size="sm"
                   onClick={() => handlePageChange(data.page + 1)}
                   disabled={data.page === data.totalPages}
+                  className="cursor-pointer"
                 >
                   Next
                 </Button>
