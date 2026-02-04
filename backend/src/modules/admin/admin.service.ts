@@ -33,6 +33,16 @@ export class AdminService {
       throw new UnauthorizedException('JWT expired');
     }
 
+    // Check email whitelist
+    const email = payload.email;
+    const whitelist = this.config.get<string>('ADMIN_EMAIL_WHITELIST') || '';
+    const allowedEmails = whitelist.split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
+
+    if (allowedEmails.length > 0 && !allowedEmails.includes(email?.toLowerCase())) {
+      this.logger.warn(`Admin login rejected for email: ${email}`);
+      throw new UnauthorizedException('Access denied - email not authorized');
+    }
+
     const googleId = payload.sub;
     const client = this.supabase.getClient();
 
