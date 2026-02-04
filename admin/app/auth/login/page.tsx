@@ -39,7 +39,7 @@ function LoginContent() {
         window.history.replaceState(null, '', window.location.pathname);
 
         // Redirect to target page or orders
-        const redirect = searchParams.get('redirect') || '/orders';
+        const redirect = searchParams.get('redirect') || '/dashboard/orders';
         router.push(redirect);
       } catch (err) {
         console.error('Login failed:', err);
