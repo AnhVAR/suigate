@@ -26,22 +26,16 @@ export default function DashboardLayout({
         </div>
         <nav className="p-4 space-y-2">
           <a
-            href="/orders"
+            href="/dashboard/orders"
             className="block px-4 py-2 text-sm font-medium text-gray-700 rounded-md hover:bg-gray-100"
           >
             Orders
           </a>
           <a
-            href="/users"
+            href="/dashboard/users"
             className="block px-4 py-2 text-sm font-medium text-gray-700 rounded-md hover:bg-gray-100"
           >
             Users
-          </a>
-          <a
-            href="/analytics"
-            className="block px-4 py-2 text-sm font-medium text-gray-700 rounded-md hover:bg-gray-100"
-          >
-            Analytics
           </a>
         </nav>
       </aside>
