@@ -6,14 +6,11 @@ export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Protected routes that require authentication
-  const protectedRoutes = ['/orders', '/users', '/analytics'];
-  const isProtectedRoute = protectedRoutes.some(route =>
-    pathname.startsWith(route)
-  );
+  const isProtectedRoute = pathname.startsWith('/dashboard');
 
   // If accessing protected route without token, redirect to login
   if (isProtectedRoute && !token) {
-    const loginUrl = new URL('/login', request.url);
+    const loginUrl = new URL('/auth/login', request.url);
     loginUrl.searchParams.set('redirect', pathname);
     return NextResponse.redirect(loginUrl);
   }
@@ -26,28 +23,28 @@ export function middleware(request: NextRequest) {
       // Check expiration
       if (payload.exp && payload.exp * 1000 < Date.now()) {
         // Token expired, redirect to login
-        const loginUrl = new URL('/login', request.url);
+        const loginUrl = new URL('/auth/login', request.url);
         const response = NextResponse.redirect(loginUrl);
         response.cookies.delete('admin_session');
         return response;
       }
     } catch {
       // Invalid token, redirect to login
-      const loginUrl = new URL('/login', request.url);
+      const loginUrl = new URL('/auth/login', request.url);
       const response = NextResponse.redirect(loginUrl);
       response.cookies.delete('admin_session');
       return response;
     }
   }
 
-  // If logged in and trying to access login page, redirect to orders
-  if (pathname === '/login' && token) {
-    return NextResponse.redirect(new URL('/orders', request.url));
+  // If logged in and trying to access login page, redirect to dashboard
+  if (pathname === '/auth/login' && token) {
+    return NextResponse.redirect(new URL('/dashboard', request.url));
   }
 
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ['/orders/:path*', '/users/:path*', '/analytics/:path*', '/login'],
+  matcher: ['/dashboard/:path*', '/auth/login'],
 };
