@@ -4,7 +4,7 @@ import { buildGoogleOAuthUrl } from '@/lib/zklogin-web-auth';
 
 export function GoogleLoginButton() {
   const handleLogin = () => {
-    const redirectUri = `${window.location.origin}/login`;
+    const redirectUri = `${window.location.origin}/auth/login`;
     const oauthUrl = buildGoogleOAuthUrl(redirectUri);
     window.location.href = oauthUrl;
   };
