@@ -49,7 +49,7 @@ export default function UsersPage() {
     if (filters.search) params.set('search', filters.search);
 
     const queryString = params.toString();
-    router.replace(`/users${queryString ? `?${queryString}` : ''}`, { scroll: false });
+    router.replace(`/dashboard/users${queryString ? `?${queryString}` : ''}`, { scroll: false });
   }, [filters, router]);
 
   const handleRowClick = (user: AdminUserDto) => {
