@@ -22,56 +22,35 @@ function formatCurrency(value: number): string {
 export function VolumeChart({ data, isLoading }: VolumeChartProps) {
   if (isLoading) {
     return (
-      <div className="bg-white p-6 rounded-lg border">
-        <h3 className="text-lg font-semibold mb-4">Volume Trends</h3>
-        <div className="h-[300px] flex items-center justify-center">
-          <div className="animate-pulse text-gray-400">Loading chart...</div>
-        </div>
+      <div className="h-[300px] flex items-center justify-center">
+        <div className="animate-pulse text-muted-foreground">Loading chart...</div>
       </div>
     );
   }
 
   if (!data || data.length === 0) {
     return (
-      <div className="bg-white p-6 rounded-lg border">
-        <h3 className="text-lg font-semibold mb-4">Volume Trends</h3>
-        <div className="h-[300px] flex items-center justify-center text-gray-400">
-          No data available
-        </div>
+      <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+        No data available
       </div>
     );
   }
 
   return (
-    <div className="bg-white p-6 rounded-lg border shadow-sm">
-      <h3 className="text-lg font-semibold mb-4">Volume Trends</h3>
-      <ResponsiveContainer width="100%" height={300}>
-        <AreaChart data={data}>
-          <XAxis dataKey="date" tickFormatter={formatDate} />
-          <YAxis tickFormatter={formatCurrency} />
-          <Tooltip
-            formatter={(value: number | undefined) => formatCurrency(value || 0)}
-            labelFormatter={(label: any) => formatDate(String(label))}
-          />
-          <Legend />
-          <Area
-            type="monotone"
-            dataKey="buy_volume"
-            stackId="1"
-            fill="#10b981"
-            stroke="#10b981"
-            name="Buy Volume"
-          />
-          <Area
-            type="monotone"
-            dataKey="sell_volume"
-            stackId="1"
-            fill="#f59e0b"
-            stroke="#f59e0b"
-            name="Sell Volume"
-          />
-        </AreaChart>
-      </ResponsiveContainer>
-    </div>
+    <ResponsiveContainer width="100%" height={300}>
+      <AreaChart data={data}>
+        <XAxis dataKey="date" tickFormatter={formatDate} stroke="hsl(var(--muted-foreground))" fontSize={12} />
+        <YAxis tickFormatter={formatCurrency} stroke="hsl(var(--muted-foreground))" fontSize={12} />
+        <Tooltip
+          formatter={(value: number | undefined) => formatCurrency(value || 0)}
+          labelFormatter={(label: any) => formatDate(String(label))}
+          contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px' }}
+          labelStyle={{ color: 'hsl(var(--foreground))' }}
+        />
+        <Legend wrapperStyle={{ color: 'hsl(var(--foreground))' }} />
+        <Area type="monotone" dataKey="buy_volume" stackId="1" fill="#10b981" stroke="#10b981" name="Buy Volume" fillOpacity={0.6} />
+        <Area type="monotone" dataKey="sell_volume" stackId="1" fill="#f59e0b" stroke="#f59e0b" name="Sell Volume" fillOpacity={0.6} />
+      </AreaChart>
+    </ResponsiveContainer>
   );
 }

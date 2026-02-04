@@ -20,22 +20,16 @@ const STATUS_COLORS = {
 export function OrderBreakdownChart({ data, isLoading }: OrderBreakdownChartProps) {
   if (isLoading) {
     return (
-      <div className="bg-white p-6 rounded-lg border">
-        <h3 className="text-lg font-semibold mb-4">Order Breakdown</h3>
-        <div className="h-[300px] flex items-center justify-center">
-          <div className="animate-pulse text-gray-400">Loading chart...</div>
-        </div>
+      <div className="h-[300px] flex items-center justify-center">
+        <div className="animate-pulse text-muted-foreground">Loading chart...</div>
       </div>
     );
   }
 
   if (!data) {
     return (
-      <div className="bg-white p-6 rounded-lg border">
-        <h3 className="text-lg font-semibold mb-4">Order Breakdown</h3>
-        <div className="h-[300px] flex items-center justify-center text-gray-400">
-          No data available
-        </div>
+      <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+        No data available
       </div>
     );
   }
@@ -47,22 +41,22 @@ export function OrderBreakdownChart({ data, isLoading }: OrderBreakdownChartProp
   ];
 
   return (
-    <div className="bg-white p-6 rounded-lg border shadow-sm">
-      <h3 className="text-lg font-semibold mb-4">Order Breakdown by Type</h3>
-      <ResponsiveContainer width="100%" height={300}>
-        <BarChart data={chartData}>
-          <XAxis dataKey="name" />
-          <YAxis />
-          <Tooltip />
-          <Legend />
-          <Bar dataKey="pending" stackId="a" fill={STATUS_COLORS.pending} name="Pending" />
-          <Bar dataKey="paid" stackId="a" fill={STATUS_COLORS.paid} name="Paid" />
-          <Bar dataKey="processing" stackId="a" fill={STATUS_COLORS.processing} name="Processing" />
-          <Bar dataKey="settled" stackId="a" fill={STATUS_COLORS.settled} name="Settled" />
-          <Bar dataKey="cancelled" stackId="a" fill={STATUS_COLORS.cancelled} name="Cancelled" />
-          <Bar dataKey="failed" stackId="a" fill={STATUS_COLORS.failed} name="Failed" />
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
+    <ResponsiveContainer width="100%" height={300}>
+      <BarChart data={chartData}>
+        <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={12} />
+        <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
+        <Tooltip
+          contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px' }}
+          labelStyle={{ color: 'hsl(var(--foreground))' }}
+        />
+        <Legend wrapperStyle={{ color: 'hsl(var(--foreground))' }} />
+        <Bar dataKey="pending" stackId="a" fill={STATUS_COLORS.pending} name="Pending" radius={[0, 0, 0, 0]} />
+        <Bar dataKey="paid" stackId="a" fill={STATUS_COLORS.paid} name="Paid" />
+        <Bar dataKey="processing" stackId="a" fill={STATUS_COLORS.processing} name="Processing" />
+        <Bar dataKey="settled" stackId="a" fill={STATUS_COLORS.settled} name="Settled" />
+        <Bar dataKey="cancelled" stackId="a" fill={STATUS_COLORS.cancelled} name="Cancelled" />
+        <Bar dataKey="failed" stackId="a" fill={STATUS_COLORS.failed} name="Failed" radius={[4, 4, 0, 0]} />
+      </BarChart>
+    </ResponsiveContainer>
   );
 }

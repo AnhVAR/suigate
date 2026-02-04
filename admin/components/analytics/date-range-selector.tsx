@@ -33,58 +33,62 @@ export function DateRangeSelector({ onDateRangeChange }: DateRangeSelectorProps)
       setSelectedRange('custom');
       const fromDate = new Date(customFrom);
       const toDate = new Date(customTo);
-      toDate.setHours(23, 59, 59, 999); // End of day
+      toDate.setHours(23, 59, 59, 999);
       onDateRangeChange(fromDate.toISOString(), toDate.toISOString());
     }
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-2 p-4 bg-white rounded-lg border">
-      <span className="text-sm font-medium text-gray-700">Date Range:</span>
+    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border/50 bg-card px-4 py-2">
+      <span className="text-sm font-medium text-muted-foreground">Range:</span>
 
       <Button
         variant={selectedRange === '7d' ? 'default' : 'outline'}
         size="sm"
         onClick={() => handleQuickSelect('7d')}
+        className="cursor-pointer"
       >
-        7 Days
+        7D
       </Button>
 
       <Button
         variant={selectedRange === '30d' ? 'default' : 'outline'}
         size="sm"
         onClick={() => handleQuickSelect('30d')}
+        className="cursor-pointer"
       >
-        30 Days
+        30D
       </Button>
 
       <Button
         variant={selectedRange === '90d' ? 'default' : 'outline'}
         size="sm"
         onClick={() => handleQuickSelect('90d')}
+        className="cursor-pointer"
       >
-        90 Days
+        90D
       </Button>
 
-      <div className="flex items-center gap-2 ml-4">
+      <div className="flex items-center gap-2 ml-2">
         <input
           type="date"
           value={customFrom}
           onChange={(e) => setCustomFrom(e.target.value)}
-          className="px-2 py-1 text-sm border rounded"
+          className="h-8 rounded-md border border-border/50 bg-background px-2 text-sm text-foreground"
         />
-        <span className="text-sm text-gray-500">to</span>
+        <span className="text-sm text-muted-foreground">to</span>
         <input
           type="date"
           value={customTo}
           onChange={(e) => setCustomTo(e.target.value)}
-          className="px-2 py-1 text-sm border rounded"
+          className="h-8 rounded-md border border-border/50 bg-background px-2 text-sm text-foreground"
         />
         <Button
           variant="outline"
           size="sm"
           onClick={handleCustomApply}
           disabled={!customFrom || !customTo}
+          className="cursor-pointer"
         >
           Apply
         </Button>
