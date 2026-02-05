@@ -240,10 +240,12 @@ export default function ConvertScreen() {
             <MaterialIcons name="check-circle" size={56} color="#22c55e" />
           </View>
           <Text className="text-2xl font-bold text-neutral-900 mb-2">
-            Order Created!
+            {mode === 'buy' ? 'Payment Confirmed!' : 'Order Created!'}
           </Text>
           <Text className="text-neutral-500 text-center mb-8">
-            {mode === 'quick-sell'
+            {mode === 'buy'
+              ? 'USDC has been credited to your wallet'
+              : mode === 'quick-sell'
               ? 'VND transfer initiated to your bank account'
               : 'Your Smart Sell order is active'}
           </Text>

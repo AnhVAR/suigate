@@ -110,60 +110,48 @@ export const createBuyOrder = async (
 
 /**
  * Create a quick sell order (instant at market rate)
+ * Calls real backend API
  */
 export const createQuickSellOrder = async (
   amountUsdc: number,
   bankAccountId: number
 ): Promise<CreateSellOrderResult> => {
-  await new Promise((r) => setTimeout(r, 800));
-
-  const rate = await getCurrentRate();
-  const grossVnd = amountUsdc * rate;
-  const fee = grossVnd * QUICK_SELL_FEE;
-  const netVnd = grossVnd - fee;
+  const response = await ordersBuySellApiService.createQuickSellOrder({
+    amountUsdc: amountUsdc.toString(),
+    bankAccountId,
+  });
 
   return {
-    orderId: `order-${Date.now()}`,
-    amountUsdc,
-    amountVnd: Math.round(netVnd),
-    rate,
-    fee,
+    orderId: response.orderId,
+    amountUsdc: parseFloat(response.amountUsdc),
+    amountVnd: response.amountVnd,
+    rate: response.rate,
+    fee: response.amountVnd * QUICK_SELL_FEE,
   };
 };
 
 /**
  * Create a smart sell order (escrow at target rate)
+ * Calls real backend API
  */
 export const createSmartSellOrder = async (
   amountUsdc: number,
   targetRate: number,
   bankAccountId: number
 ): Promise<CreateSellOrderResult & { comparison: SmartSellComparison }> => {
-  await new Promise((r) => setTimeout(r, 800));
-
-  const currentRate = await getCurrentRate();
-
-  // Quick sell calculation
-  const quickSellGross = amountUsdc * currentRate;
-  const quickSellFee = quickSellGross * QUICK_SELL_FEE;
-  const quickSellVnd = quickSellGross - quickSellFee;
-
-  // Smart sell calculation (at target rate)
-  const smartSellGross = amountUsdc * targetRate;
-  const smartSellFee = smartSellGross * SMART_SELL_FEE;
-  const smartSellVnd = smartSellGross - smartSellFee;
+  const response = await ordersBuySellApiService.createSmartSellOrder({
+    amountUsdc: amountUsdc.toString(),
+    targetRate,
+    bankAccountId,
+  });
 
   return {
-    orderId: `order-${Date.now()}`,
-    amountUsdc,
-    amountVnd: Math.round(smartSellVnd),
-    rate: targetRate,
-    fee: smartSellFee,
-    comparison: {
-      quickSellVnd: Math.round(quickSellVnd),
-      smartSellVnd: Math.round(smartSellVnd),
-      savings: Math.round(smartSellVnd - quickSellVnd),
-    },
+    orderId: response.orderId,
+    amountUsdc: parseFloat(response.amountUsdc),
+    amountVnd: response.comparison.smartSellVnd,
+    rate: response.targetRate,
+    fee: parseFloat(response.fee),
+    comparison: response.comparison,
   };
 };
 
