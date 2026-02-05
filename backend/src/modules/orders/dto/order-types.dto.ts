@@ -35,6 +35,13 @@ export class QuickSellOrderResponseDto {
   rate: number;
   bankAccountId: number;
   status: string;
+  depositPayload: {
+    orderId: string;
+    poolObjectId: string;
+    packageId: string;
+    usdcType: string;
+    amountMist: string;
+  };
 }
 
 // Smart Sell Order

@@ -17,7 +17,10 @@ import {
   createQuickSellOrder,
   createSmartSellOrder,
   validateTargetRate,
+  type DepositPayload,
 } from '../../src/services/trading-service';
+import { executeQuickSellDeposit } from '../../src/services/sui-wallet-service';
+import { ordersBuySellApiService } from '../../src/api/orders-buy-sell-api-service';
 import {
   PrimaryButton,
   AmountInput,
@@ -28,7 +31,7 @@ import {
 } from '../../src/components';
 
 type TradeMode = 'buy' | 'quick-sell' | 'smart-sell';
-type Step = 'input' | 'qr' | 'success';
+type Step = 'input' | 'qr' | 'deposit' | 'success';
 
 export default function ConvertScreen() {
   const params = useLocalSearchParams<{ mode?: string }>();
@@ -52,8 +55,10 @@ export default function ConvertScreen() {
     amountVnd?: number;
     amountUsdc?: number;
     expiresAt?: Date;
+    depositPayload?: DepositPayload;
   } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDepositing, setIsDepositing] = useState(false);
 
   const { canAccessVndFeatures } = useAuthStore();
   const { usdcBalance } = useWalletStore();
@@ -176,8 +181,14 @@ export default function ConvertScreen() {
           Alert.alert('Error', 'Please select a bank account');
           return;
         }
-        await createQuickSellOrder(amountNum, selectedBankId);
-        setStep('success');
+        const result = await createQuickSellOrder(amountNum, selectedBankId);
+        setOrderData({
+          orderId: result.orderId,
+          amountUsdc: result.amountUsdc,
+          amountVnd: result.amountVnd,
+          depositPayload: result.depositPayload,
+        });
+        setStep('deposit');
       } else {
         // Smart Sell
         const validation = validateTargetRate(targetRateNum, currentRate);
@@ -207,6 +218,86 @@ export default function ConvertScreen() {
     setOrderData(null);
     setStep('input');
   };
+
+  const { zkLoginData } = useAuthStore();
+
+  const handleDeposit = async () => {
+    if (!orderData?.depositPayload || !zkLoginData) {
+      Alert.alert('Error', 'Missing deposit data or wallet not connected');
+      return;
+    }
+
+    setIsDepositing(true);
+    try {
+      // Execute deposit transaction with zkLogin
+      const result = await executeQuickSellDeposit(orderData.depositPayload, zkLoginData);
+
+      if (!result.success) {
+        throw new Error('Deposit transaction failed');
+      }
+
+      // Confirm order with tx hash
+      await ordersBuySellApiService.confirmOrder(orderData.orderId!, { txHash: result.digest });
+
+      setStep('success');
+    } catch (error) {
+      const errorMessage = extractErrorMessage(error);
+      Alert.alert('Deposit Failed', errorMessage);
+      console.error('Deposit failed:', error);
+    } finally {
+      setIsDepositing(false);
+    }
+  };
+
+  // Deposit Step (Quick Sell)
+  if (step === 'deposit' && orderData) {
+    return (
+      <SafeAreaView className="flex-1 bg-white" edges={['top']}>
+        <View className="flex-1 px-6 py-8">
+          <Text className="text-2xl font-bold text-neutral-900 text-center mb-2">
+            Deposit USDC
+          </Text>
+          <Text className="text-neutral-500 text-center mb-8">
+            Confirm the transaction to deposit USDC to the liquidity pool
+          </Text>
+
+          {/* Order Summary */}
+          <View className="bg-neutral-50 rounded-xl p-4 mb-6">
+            <View className="flex-row justify-between mb-2">
+              <Text className="text-neutral-500">Amount</Text>
+              <Text className="text-neutral-900 font-medium">
+                {orderData.amountUsdc?.toFixed(2)} USDC
+              </Text>
+            </View>
+            <View className="flex-row justify-between mb-2">
+              <Text className="text-neutral-500">You will receive</Text>
+              <Text className="text-neutral-900 font-medium">
+                {orderData.amountVnd?.toLocaleString('vi-VN')} VND
+              </Text>
+            </View>
+            <View className="flex-row justify-between">
+              <Text className="text-neutral-500">Order ID</Text>
+              <Text className="text-neutral-500 text-xs">
+                {orderData.orderId?.slice(0, 8)}...
+              </Text>
+            </View>
+          </View>
+
+          <View className="flex-1" />
+
+          <PrimaryButton
+            title={isDepositing ? 'Signing Transaction...' : 'Confirm Deposit'}
+            onPress={handleDeposit}
+            isLoading={isDepositing}
+          />
+
+          <Pressable onPress={handleReset} className="mt-4 py-3">
+            <Text className="text-neutral-500 text-center">Cancel</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   // QR Display Step (Buy only)
   if (step === 'qr' && orderData) {
@@ -246,7 +337,7 @@ export default function ConvertScreen() {
             {mode === 'buy'
               ? 'USDC has been credited to your wallet'
               : mode === 'quick-sell'
-              ? 'VND transfer initiated to your bank account'
+              ? 'USDC deposited. VND will be transferred to your bank soon.'
               : 'Your Smart Sell order is active'}
           </Text>
           <PrimaryButton title="Done" onPress={handleReset} />

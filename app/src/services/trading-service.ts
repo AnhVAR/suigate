@@ -22,12 +22,21 @@ export interface CreateBuyOrderResult {
   expiresAt: Date;
 }
 
+export interface DepositPayload {
+  orderId: string;
+  poolObjectId: string;
+  packageId: string;
+  usdcType: string;
+  amountMist: string;
+}
+
 export interface CreateSellOrderResult {
   orderId: string;
   amountUsdc: number;
   amountVnd: number;
   rate: number;
   fee: number;
+  depositPayload?: DepositPayload;
 }
 
 export interface SmartSellComparison {
@@ -127,6 +136,7 @@ export const createQuickSellOrder = async (
     amountVnd: response.amountVnd,
     rate: response.rate,
     fee: response.amountVnd * QUICK_SELL_FEE,
+    depositPayload: response.depositPayload,
   };
 };
 

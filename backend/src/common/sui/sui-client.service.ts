@@ -9,6 +9,8 @@ type GetJsonRpcFullnodeUrlFn = (network: string) => string;
 export class SuiClientService implements OnModuleInit {
   private client: SuiJsonRpcClientType;
   private usdcType: string;
+  private poolId: string;
+  private packageId: string;
   private readonly logger = new Logger(SuiClientService.name);
 
   // RPC retry configuration
@@ -32,6 +34,8 @@ export class SuiClientService implements OnModuleInit {
         getJsonRpcFullnodeUrl('mainnet') ||
         'https://fullnode.mainnet.sui.io';
       this.usdcType = this.config.get<string>('sui.usdcType') || '';
+      this.poolId = this.config.get<string>('sui.poolId') || '';
+      this.packageId = this.config.get<string>('sui.packageId') || '';
 
       this.client = new SuiJsonRpcClient({ url: rpcUrl });
       this.logger.log(`Sui client initialized: ${rpcUrl}`);
@@ -131,5 +135,17 @@ export class SuiClientService implements OnModuleInit {
 
   getClient(): SuiJsonRpcClientType {
     return this.client;
+  }
+
+  getPoolId(): string {
+    return this.poolId;
+  }
+
+  getPackageId(): string {
+    return this.packageId;
+  }
+
+  getUsdcType(): string {
+    return this.usdcType;
   }
 }

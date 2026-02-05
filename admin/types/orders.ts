@@ -21,6 +21,9 @@ export interface AdminOrderDto {
   expires_at: string | null;
   created_at: string;
   updated_at: string;
+  // Transaction info (deposit/payment)
+  tx_hash: string | null;
+  tx_status: string | null;
 }
 
 export interface AdminOrdersResponse {

@@ -154,7 +154,7 @@ export const signAndExecuteWithZkLogin = async (
 export const buildSuiTransferTransaction = (
   recipient: string,
   amountMist: bigint
-): Transaction => {
+): any => {
   const txb = new Transaction();
   const [coin] = txb.splitCoins(txb.gas, [amountMist]);
   txb.transferObjects([coin], recipient);
@@ -184,10 +184,10 @@ export const transferSuiWithZkLogin = async (
  * Estimate gas for a transaction (dry run)
  */
 export const estimateGas = async (
-  txb: Transaction,
+  txb: any,
   sender: string
 ): Promise<bigint> => {
-  const client = createSuiClient();
+  const client = await createSuiClient();
   txb.setSender(sender);
 
   const dryRunResult = await client.dryRunTransactionBlock({
@@ -195,4 +195,84 @@ export const estimateGas = async (
   });
 
   return BigInt(dryRunResult.input.gasData.budget);
+};
+
+/**
+ * Build deposit transaction for Quick Sell (deposit USDC to liquidity pool)
+ */
+export const buildDepositTransaction = async (
+  poolObjectId: string,
+  packageId: string,
+  usdcType: string,
+  amountMist: string,
+  senderAddress: string
+): Promise<any> => {
+  await loadSuiModules();
+  const client = await createSuiClient();
+
+  // Get USDC coins owned by sender
+  const coins = await client.getCoins({
+    owner: senderAddress,
+    coinType: usdcType,
+  });
+
+  if (!coins.data || coins.data.length === 0) {
+    throw new Error('No USDC coins found in wallet');
+  }
+
+  const txb = new Transaction();
+  const amount = BigInt(amountMist);
+
+  // Merge coins if needed and split exact amount
+  const coinIds = coins.data.map((c: any) => c.coinObjectId);
+
+  if (coinIds.length > 1) {
+    // Merge all coins into first one
+    txb.mergeCoins(coinIds[0], coinIds.slice(1));
+  }
+
+  // Split exact amount needed
+  const [depositCoin] = txb.splitCoins(coinIds[0], [amount]);
+
+  // Call deposit function on liquidity pool
+  txb.moveCall({
+    target: `${packageId}::liquidity_pool::deposit`,
+    typeArguments: [usdcType],
+    arguments: [
+      txb.object(poolObjectId),
+      depositCoin,
+    ],
+  });
+
+  return txb;
+};
+
+/**
+ * Execute Quick Sell deposit with zkLogin
+ */
+export const executeQuickSellDeposit = async (
+  depositPayload: {
+    poolObjectId: string;
+    packageId: string;
+    usdcType: string;
+    amountMist: string;
+  },
+  zkLoginData: ZkLoginData
+): Promise<{ digest: string; success: boolean }> => {
+  const txb = await buildDepositTransaction(
+    depositPayload.poolObjectId,
+    depositPayload.packageId,
+    depositPayload.usdcType,
+    depositPayload.amountMist,
+    zkLoginData.suiAddress
+  );
+
+  const result = await signAndExecuteWithZkLogin(txb, zkLoginData);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const effects = result.effects as any;
+  return {
+    digest: result.digest,
+    success: effects?.status?.status === 'success',
+  };
 };

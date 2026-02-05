@@ -33,7 +33,8 @@ export class AdminOrdersService {
         `
         *,
         users!inner(sui_address, kyc_status),
-        bank_accounts(bank_code)
+        bank_accounts(bank_code),
+        transactions(tx_hash, tx_status)
       `,
         { count: 'exact' }
       );
@@ -79,26 +80,32 @@ export class AdminOrdersService {
     }
 
     // Transform data to AdminOrderDto format
-    const orders: AdminOrderDto[] = (data || []).map((order: any) => ({
-      id: order.id,
-      user_id: order.user_id,
-      user_sui_address: order.users?.sui_address || '',
-      user_kyc_status: order.users?.kyc_status || 'pending',
-      bank_account_id: order.bank_account_id,
-      bank_code: order.bank_accounts?.bank_code || null,
-      order_type: order.order_type,
-      amount_vnd: order.amount_vnd,
-      amount_usdc: order.amount_usdc,
-      rate: order.rate,
-      target_rate: order.target_rate,
-      status: order.status,
-      escrow_object_id: order.escrow_object_id,
-      sepay_reference: order.sepay_reference,
-      needs_manual_review: order.needs_manual_review,
-      expires_at: order.expires_at,
-      created_at: order.created_at,
-      updated_at: order.updated_at,
-    }));
+    const orders: AdminOrderDto[] = (data || []).map((order: any) => {
+      // Get latest transaction (if any)
+      const latestTx = order.transactions?.[0] || null;
+      return {
+        id: order.id,
+        user_id: order.user_id,
+        user_sui_address: order.users?.sui_address || '',
+        user_kyc_status: order.users?.kyc_status || 'pending',
+        bank_account_id: order.bank_account_id,
+        bank_code: order.bank_accounts?.bank_code || null,
+        order_type: order.order_type,
+        amount_vnd: order.amount_vnd,
+        amount_usdc: order.amount_usdc,
+        rate: order.rate,
+        target_rate: order.target_rate,
+        status: order.status,
+        escrow_object_id: order.escrow_object_id,
+        sepay_reference: order.sepay_reference,
+        needs_manual_review: order.needs_manual_review,
+        expires_at: order.expires_at,
+        created_at: order.created_at,
+        updated_at: order.updated_at,
+        tx_hash: latestTx?.tx_hash || null,
+        tx_status: latestTx?.tx_status || null,
+      };
+    });
 
     const total = count || 0;
     const totalPages = Math.ceil(total / limit);
@@ -119,7 +126,8 @@ export class AdminOrdersService {
         `
         *,
         users!inner(sui_address, kyc_status),
-        bank_accounts(bank_code)
+        bank_accounts(bank_code),
+        transactions(tx_hash, tx_status)
       `
       )
       .eq('id', id)
@@ -128,6 +136,8 @@ export class AdminOrdersService {
     if (error || !data) {
       throw new NotFoundException(`Order ${id} not found`);
     }
+
+    const latestTx = data.transactions?.[0] || null;
 
     return {
       id: data.id,
@@ -148,6 +158,8 @@ export class AdminOrdersService {
       expires_at: data.expires_at,
       created_at: data.created_at,
       updated_at: data.updated_at,
+      tx_hash: latestTx?.tx_hash || null,
+      tx_status: latestTx?.tx_status || null,
     };
   }
 

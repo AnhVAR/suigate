@@ -18,5 +18,4 @@ global.Buffer = Buffer;
 
 // Process global - required by some dependencies
 import process from 'process';
-// @ts-expect-error - Setting global process for compatibility
 global.process = process;

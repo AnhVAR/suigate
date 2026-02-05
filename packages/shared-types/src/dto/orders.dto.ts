@@ -30,6 +30,14 @@ export interface QuickSellOrderResponseDto {
   rate: number;
   bankAccountId: number;
   status: string;
+  /** Transaction payload for user to deposit USDC to pool */
+  depositPayload: {
+    orderId: string;
+    poolObjectId: string;
+    packageId: string;
+    usdcType: string;
+    amountMist: string; // USDC amount in smallest unit (6 decimals)
+  };
 }
 
 /** Create smart sell order request */

@@ -106,6 +106,9 @@ export class OrdersService {
     const amountUsdc = parseFloat(dto.amountUsdc);
     const amountVnd = amountUsdc * rates.sellRate;
 
+    // USDC has 6 decimals, convert to smallest unit (mist)
+    const amountMist = Math.round(amountUsdc * 1_000_000);
+
     const { data, error } = await this.supabase
       .getClient()
       .from('orders')
@@ -133,6 +136,13 @@ export class OrdersService {
       rate: rates.sellRate,
       bankAccountId: dto.bankAccountId,
       status: 'pending',
+      depositPayload: {
+        orderId: data.id,
+        poolObjectId: this.suiClient.getPoolId(),
+        packageId: this.suiClient.getPackageId(),
+        usdcType: this.suiClient.getUsdcType(),
+        amountMist: amountMist.toString(),
+      },
     };
   }
 

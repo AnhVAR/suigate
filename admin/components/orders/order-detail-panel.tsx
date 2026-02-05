@@ -173,6 +173,27 @@ export function OrderDetailPanel({ order, open, onOpenChange }: OrderDetailPanel
             <div className="space-y-3">
               <h3 className="font-semibold text-lg">Blockchain & Payment</h3>
               <div className="space-y-2 text-sm">
+                {order.tx_hash && (
+                  <div>
+                    <span className="text-gray-500">Transaction Hash:</span>
+                    <div className="flex items-center gap-2 mt-1">
+                      <p className="font-mono text-xs break-all">{order.tx_hash}</p>
+                      <a
+                        href={`https://suiscan.xyz/testnet/tx/${order.tx_hash}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-500 hover:text-blue-600 text-xs"
+                      >
+                        View ↗
+                      </a>
+                    </div>
+                    {order.tx_status && (
+                      <span className={`text-xs ${order.tx_status === 'confirmed' ? 'text-green-600' : 'text-yellow-600'}`}>
+                        ({order.tx_status})
+                      </span>
+                    )}
+                  </div>
+                )}
                 {order.escrow_object_id && (
                   <div>
                     <span className="text-gray-500">Escrow Object ID:</span>
