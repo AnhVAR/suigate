@@ -354,9 +354,8 @@ export class SuiTransactionService implements OnModuleInit {
     const { Transaction } = await import('@mysten/sui/transactions');
     const sponsorAddress = this.signer.toSuiAddress();
 
-    // Reconstruct transaction from kind bytes
-    const kindBytes = Buffer.from(txKindBase64, 'base64');
-    const tx = Transaction.fromKind(kindBytes);
+    // Reconstruct transaction from kind bytes (accepts base64 directly)
+    const tx = Transaction.fromKind(txKindBase64);
 
     // Set sender and gas owner
     tx.setSender(senderAddress);
@@ -387,8 +386,8 @@ export class SuiTransactionService implements OnModuleInit {
     tx.setGasPrice(gasPrice);
     tx.setGasBudget(50000000n); // 0.05 SUI
 
-    // Build the final transaction
-    const txBytes = await tx.build({ client: this.client });
+    // Build WITHOUT client to preserve original object refs
+    const txBytes = await tx.build();
 
     // Sponsor signs
     const { signature: sponsorSignature } =
