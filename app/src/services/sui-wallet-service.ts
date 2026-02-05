@@ -516,17 +516,34 @@ export const executeQuickSellDeposit = async (
     depositPayload.amountMist,
     zkLoginData.suiAddress
   );
+  console.log('[QuickSell] txKindBase64 length:', txKindBase64.length);
+  console.log('[QuickSell] txKindBase64 (first 100):', txKindBase64.substring(0, 100));
 
   // Step 2: Request sponsorship from backend
   console.log('[QuickSell] Requesting sponsorship...');
   const { txBytesBase64, sponsorSignature } =
     await sponsorTransactionKindViaBackend(txKindBase64);
+  console.log('[QuickSell] txBytesBase64 length:', txBytesBase64.length);
+  console.log('[QuickSell] txBytesBase64 (first 100):', txBytesBase64.substring(0, 100));
+  console.log('[QuickSell] sponsorSignature (first 50):', sponsorSignature.substring(0, 50));
 
   // Step 3: Sign with zkLogin
   console.log('[QuickSell] Signing with zkLogin...');
   const txBytesArray = Uint8Array.from(Buffer.from(txBytesBase64, 'base64'));
+  console.log('[QuickSell] txBytesArray length:', txBytesArray.length);
+
   const keypair = await reconstructKeypair(zkLoginData.ephemeralKey);
+  const ephemeralPubKey = keypair.getPublicKey().toBase64();
+  console.log('[QuickSell] Ephemeral pubkey:', ephemeralPubKey);
+  console.log('[QuickSell] Stored pubkey:', zkLoginData.ephemeralKey.publicKey);
+  console.log('[QuickSell] Pubkey match:', ephemeralPubKey === zkLoginData.ephemeralKey.publicKey);
+
   const { signature: userSignature } = await keypair.signTransaction(txBytesArray);
+  console.log('[QuickSell] userSignature (first 50):', userSignature.substring(0, 50));
+
+  console.log('[QuickSell] zkLoginData.maxEpoch:', zkLoginData.maxEpoch);
+  console.log('[QuickSell] zkLoginData.addressSeed (first 20):', zkLoginData.addressSeed.substring(0, 20));
+  console.log('[QuickSell] zkLoginData.proof keys:', Object.keys(zkLoginData.proof));
 
   const zkLoginSig = getZkLoginSignature({
     inputs: {
@@ -536,6 +553,7 @@ export const executeQuickSellDeposit = async (
     maxEpoch: zkLoginData.maxEpoch,
     userSignature,
   });
+  console.log('[QuickSell] zkLoginSig (first 100):', zkLoginSig.substring(0, 100));
 
   // Step 4: Execute dual-signed transaction
   console.log('[QuickSell] Executing dual-signed tx...');

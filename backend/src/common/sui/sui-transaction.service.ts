@@ -354,8 +354,13 @@ export class SuiTransactionService implements OnModuleInit {
     const { Transaction } = await import('@mysten/sui/transactions');
     const sponsorAddress = this.signer.toSuiAddress();
 
+    this.logger.log(`[SponsorTxKind] Input kindBase64 length: ${txKindBase64.length}`);
+    this.logger.log(`[SponsorTxKind] Sender: ${senderAddress}`);
+    this.logger.log(`[SponsorTxKind] Sponsor: ${sponsorAddress}`);
+
     // Reconstruct transaction from kind bytes (accepts base64 directly)
     const tx = Transaction.fromKind(txKindBase64);
+    this.logger.log(`[SponsorTxKind] Transaction reconstructed from kind`);
 
     // Set sender and gas owner
     tx.setSender(senderAddress);
@@ -387,14 +392,19 @@ export class SuiTransactionService implements OnModuleInit {
     tx.setGasBudget(50000000n); // 0.05 SUI
 
     // Build WITHOUT client to preserve original object refs
+    this.logger.log(`[SponsorTxKind] Building transaction...`);
     const txBytes = await tx.build();
+    const txBytesB64 = Buffer.from(txBytes).toString('base64');
+    this.logger.log(`[SponsorTxKind] Built txBytes length: ${txBytes.length}`);
+    this.logger.log(`[SponsorTxKind] Built txBytesB64 (first 100): ${txBytesB64.substring(0, 100)}...`);
 
     // Sponsor signs
     const { signature: sponsorSignature } =
       await this.signer.signTransaction(txBytes);
+    this.logger.log(`[SponsorTxKind] Sponsor signature (first 50): ${sponsorSignature.substring(0, 50)}...`);
 
     this.logger.log(
-      `Sponsored tx kind for ${senderAddress}, gas by ${sponsorAddress}`,
+      `[SponsorTxKind] SUCCESS - Sponsored tx kind for ${senderAddress}, gas by ${sponsorAddress}`,
     );
 
     return {
