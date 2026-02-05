@@ -1,33 +1,66 @@
 /**
  * VietQR Payment Display Component
  * Shows QR code with countdown timer for buy USDC flow
- * Uses local QR generation (no external API dependency)
+ * Polls backend to detect payment confirmation
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import QRCode from 'react-native-qrcode-svg';
+import { ordersBuySellApiService } from '../../api/orders-buy-sell-api-service';
+
+const POLL_INTERVAL_MS = 3000; // Poll every 3 seconds
 
 interface VietQRPaymentDisplayProps {
+  orderId: string;
   qrData: string;
   reference: string;
   amountVnd: number;
   expiresAt: Date;
   onExpired?: () => void;
   onCancel?: () => void;
+  onPaymentConfirmed?: () => void;
 }
 
 export const VietQRPaymentDisplay: React.FC<VietQRPaymentDisplayProps> = ({
+  orderId,
   qrData,
   reference,
   amountVnd,
   expiresAt,
   onExpired,
   onCancel,
+  onPaymentConfirmed,
 }) => {
   const [timeLeft, setTimeLeft] = useState<number>(0);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Poll for order status changes
+  useEffect(() => {
+    const checkOrderStatus = async () => {
+      try {
+        const order = await ordersBuySellApiService.getOrder(orderId);
+        // Payment confirmed when status is paid or settled
+        if (order.status === 'paid' || order.status === 'settled') {
+          onPaymentConfirmed?.();
+        }
+      } catch (error) {
+        console.error('Failed to check order status:', error);
+      }
+    };
+
+    // Start polling
+    pollIntervalRef.current = setInterval(checkOrderStatus, POLL_INTERVAL_MS);
+
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
+    };
+  }, [orderId, onPaymentConfirmed]);
+
+  // Countdown timer
   useEffect(() => {
     const updateTimer = () => {
       const now = new Date();

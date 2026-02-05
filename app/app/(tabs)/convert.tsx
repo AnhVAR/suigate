@@ -46,6 +46,7 @@ export default function ConvertScreen() {
 
   // Order state
   const [orderData, setOrderData] = useState<{
+    orderId?: string;
     qrData?: string;
     reference?: string;
     amountVnd?: number;
@@ -158,6 +159,7 @@ export default function ConvertScreen() {
         }
         const result = await createBuyOrder(amountNum);
         setOrderData({
+          orderId: result.orderId,
           qrData: result.qrData,
           reference: result.reference,
           amountVnd: result.amountVnd,
@@ -215,12 +217,14 @@ export default function ConvertScreen() {
             Scan to Pay
           </Text>
           <VietQRPaymentDisplay
+            orderId={orderData.orderId || ''}
             qrData={orderData.qrData || ''}
             reference={orderData.reference || ''}
             amountVnd={orderData.amountVnd || 0}
             expiresAt={orderData.expiresAt || new Date()}
             onExpired={handleReset}
             onCancel={handleReset}
+            onPaymentConfirmed={() => setStep('success')}
           />
         </ScrollView>
       </SafeAreaView>
