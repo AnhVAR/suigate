@@ -479,12 +479,32 @@ export const executeQuickSellDeposit = async (
     userSignature,
   });
 
-  // Execute with both signatures via backend
-  const result = await executeSponsoredViaBackend(
-    txBytesBase64,
-    zkLoginSig,
-    sponsorSignature
-  );
+  // Try executing directly via RPC first (bypass backend to debug)
+  console.log('[zkLogin] Executing with signatures...');
+  const execResponse = await fetch(TESTNET_RPC, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'sui_executeTransactionBlock',
+      params: [
+        txBytesBase64,
+        [zkLoginSig, sponsorSignature], // user first, sponsor second
+        { showEffects: true },
+        'WaitForLocalExecution',
+      ],
+    }),
+  });
+  const execData = await execResponse.json();
+  console.log('[zkLogin] Execute result:', JSON.stringify(execData, null, 2));
 
-  return result;
+  if (execData.error) {
+    throw new Error(execData.error.message);
+  }
+
+  return {
+    digest: execData.result?.digest || '',
+    success: execData.result?.effects?.status?.status === 'success',
+  };
 };
