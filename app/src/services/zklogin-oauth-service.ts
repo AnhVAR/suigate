@@ -92,6 +92,9 @@ export const continueZkLoginWithJwt = async (
     console.log('[zkLogin] Generating ZK proof...');
     const keypair = await reconstructKeypair(ephemeralKey);
     const extendedPubKey = await getExtendedPubKey(keypair);
+    console.log('[zkLogin] Extended pubkey for prover:', extendedPubKey);
+    console.log('[zkLogin] maxEpoch for proof:', ephemeralKey.maxEpoch);
+    console.log('[zkLogin] randomness (first 20):', ephemeralKey.randomness?.substring(0, 20));
 
     const proof = await generateZkProof({
       jwt,
