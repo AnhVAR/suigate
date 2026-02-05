@@ -226,8 +226,14 @@ export default function ConvertScreen() {
       return;
     }
     if (!zkLoginData) {
-      Alert.alert('Error', 'Wallet not connected. Please re-login.');
-      console.error('zkLoginData missing');
+      Alert.alert(
+        'Session Expired',
+        'Your wallet session has expired. Please log out and log in again to continue.',
+        [
+          { text: 'OK', onPress: () => router.push('/settings') }
+        ]
+      );
+      console.error('zkLoginData missing - session needs refresh');
       return;
     }
 
