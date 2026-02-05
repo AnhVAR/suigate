@@ -15,6 +15,7 @@ export type OrderStatus =
   | 'processing'
   | 'settled'
   | 'cancelled'
+  | 'expired'
   | 'failed';
 export type TxStatus = 'pending' | 'confirmed' | 'failed';
 

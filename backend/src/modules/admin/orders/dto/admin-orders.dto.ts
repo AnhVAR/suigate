@@ -30,7 +30,7 @@ export class AdminOrdersQueryDto {
   order_type?: OrderType;
 
   @IsOptional()
-  @IsEnum(['pending', 'paid', 'processing', 'settled', 'cancelled', 'failed'])
+  @IsEnum(['pending', 'paid', 'processing', 'settled', 'cancelled', 'expired', 'failed'])
   status?: OrderStatus;
 
   @IsOptional()
@@ -52,7 +52,7 @@ export class AdminOrdersQueryDto {
 }
 
 export class UpdateOrderStatusDto {
-  @IsEnum(['pending', 'paid', 'processing', 'settled', 'cancelled', 'failed'])
+  @IsEnum(['pending', 'paid', 'processing', 'settled', 'cancelled', 'expired', 'failed'])
   status: OrderStatus;
 
   @IsOptional()
