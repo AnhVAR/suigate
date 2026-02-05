@@ -34,6 +34,9 @@
 | 2026-01-31 | Claude Code | contracts/sources/escrow.move | Created Smart Sell escrow with target rate execution |
 | 2026-01-31 | Claude Code | contracts/tests/suigate_tests.move | Created 11 integration tests covering all modules |
 | 2026-01-31 | Claude Code | contracts/DEPLOYMENT.md | Documented testnet deployment (Package ID, Object IDs) |
+| 2026-02-05 | Claude Code | backend/src/common/sui/sui-transaction.service.ts | Refactored sponsor tx: added sponsorTransactionKind() per Sui docs |
+| 2026-02-05 | Claude Code | backend/src/modules/wallet/wallet.controller.ts | Added POST /wallet/sponsor-tx-kind endpoint |
+| 2026-02-05 | Claude Code | app/src/services/sui-wallet-service.ts | Refactored: app builds tx locally, backend sponsors |
 
 ## Guidelines
 

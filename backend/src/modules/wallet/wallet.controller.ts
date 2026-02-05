@@ -20,9 +20,9 @@ class ExecuteSponsoredDto {
   sponsorSignature: string;
 }
 
-class BuildSponsoredDepositDto {
+class SponsorTxKindDto {
   @IsString()
-  amountMist: string;
+  txKindBase64: string;
 }
 
 @Controller('wallet')
@@ -67,18 +67,18 @@ export class WalletController {
     );
   }
 
-  @Post('build-sponsored-deposit')
-  async buildSponsoredDeposit(
+  @Post('sponsor-tx-kind')
+  async sponsorTransactionKind(
     @Request() req,
-    @Body() dto: BuildSponsoredDepositDto,
+    @Body() dto: SponsorTxKindDto,
   ): Promise<{
     txBytesBase64: string;
     sponsorSignature: string;
     sponsorAddress: string;
   }> {
-    return this.walletService.buildSponsoredDeposit(
+    return this.walletService.sponsorTransactionKind(
+      dto.txKindBase64,
       req.user.suiAddress,
-      dto.amountMist,
     );
   }
 }

@@ -57,14 +57,17 @@ export class WalletService {
     );
   }
 
-  async buildSponsoredDeposit(
+  async sponsorTransactionKind(
+    txKindBase64: string,
     senderAddress: string,
-    amountMist: string,
   ): Promise<{
     txBytesBase64: string;
     sponsorSignature: string;
     sponsorAddress: string;
   }> {
-    return this.suiTransaction.buildSponsoredDeposit(senderAddress, amountMist);
+    return this.suiTransaction.sponsorTransactionKind(
+      txKindBase64,
+      senderAddress,
+    );
   }
 }

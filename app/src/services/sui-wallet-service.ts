@@ -382,10 +382,64 @@ export const buildDepositTransaction = async (
 };
 
 /**
- * Build sponsored deposit via backend
+ * Build deposit transaction kind bytes (no gas data)
+ * For sponsored transaction flow - app builds locally, backend sponsors
  */
-const buildSponsoredDepositViaBackend = async (
-  amountMist: string
+const buildDepositTransactionKind = async (
+  poolObjectId: string,
+  packageId: string,
+  usdcType: string,
+  amountMist: string,
+  senderAddress: string
+): Promise<string> => {
+  await loadSuiModules();
+
+  // Get USDC coins owned by sender via direct RPC (fresh refs)
+  const coins = await getCoinsRpc(senderAddress, usdcType);
+
+  if (!coins || coins.length === 0) {
+    throw new Error('No USDC coins found in wallet');
+  }
+
+  // Get pool object info for explicit ref
+  const poolInfo = await getObjectRpc(poolObjectId);
+
+  const txb = new Transaction();
+  const amount = BigInt(amountMist);
+
+  // Use explicit object refs for coins
+  const coinRefs = coins.map((c: any) =>
+    txb.objectRef({
+      objectId: c.coinObjectId,
+      version: c.version,
+      digest: c.digest,
+    })
+  );
+
+  if (coinRefs.length > 1) {
+    txb.mergeCoins(coinRefs[0], coinRefs.slice(1));
+  }
+
+  const [depositCoin] = txb.splitCoins(coinRefs[0], [amount]);
+
+  txb.moveCall({
+    target: `${packageId}::liquidity_pool::deposit`,
+    typeArguments: [usdcType],
+    arguments: [txb.objectRef(poolInfo), depositCoin],
+  });
+
+  // Build transaction kind only (no gas data) - Sui sponsored tx pattern
+  const kindBytes = await txb.build({ onlyTransactionKind: true });
+
+  return Buffer.from(kindBytes).toString('base64');
+};
+
+/**
+ * Request transaction sponsorship from backend (new Sui docs pattern)
+ * Sends tx kind bytes, receives full tx + sponsor signature
+ */
+const sponsorTransactionKindViaBackend = async (
+  txKindBase64: string
 ): Promise<{
   txBytesBase64: string;
   sponsorSignature: string;
@@ -394,18 +448,18 @@ const buildSponsoredDepositViaBackend = async (
   const token = await getAuthToken();
   if (!token) throw new Error('Not authenticated');
 
-  const response = await fetch(`${getApiUrl()}/wallet/build-sponsored-deposit`, {
+  const response = await fetch(`${getApiUrl()}/wallet/sponsor-tx-kind`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ amountMist }),
+    body: JSON.stringify({ txKindBase64 }),
   });
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.message || 'Failed to build sponsored deposit');
+    throw new Error(error.message || 'Failed to sponsor transaction');
   }
 
   return response.json();
@@ -429,6 +483,7 @@ const getCurrentEpochRpc = async (): Promise<number> => {
 
 /**
  * Execute Quick Sell deposit with zkLogin (sponsored by backend)
+ * NEW FLOW: App builds tx locally, backend sponsors (Sui docs pattern)
  */
 export const executeQuickSellDeposit = async (
   depositPayload: {
@@ -442,34 +497,37 @@ export const executeQuickSellDeposit = async (
 ): Promise<{ digest: string; success: boolean }> => {
   await loadSuiModules();
 
-  // Debug: Check epoch expiry
+  // Validate zkLogin session
   const currentEpoch = await getCurrentEpochRpc();
-  console.log('[zkLogin] Current epoch:', currentEpoch);
-  console.log('[zkLogin] Max epoch:', zkLoginData.maxEpoch);
-  console.log('[zkLogin] Ephemeral pubkey:', zkLoginData.ephemeralKey.publicKey);
+  console.log('[QuickSell] Epoch check:', currentEpoch, '/', zkLoginData.maxEpoch);
 
   if (currentEpoch >= zkLoginData.maxEpoch) {
-    throw new Error(`zkLogin session expired. Current epoch ${currentEpoch} >= max epoch ${zkLoginData.maxEpoch}. Please re-login.`);
+    throw new Error(
+      `zkLogin session expired. Current epoch ${currentEpoch} >= max ${zkLoginData.maxEpoch}. Please re-login.`
+    );
   }
 
-  // Backend builds the full transaction with gas sponsorship
-  const { txBytesBase64, sponsorSignature } = await buildSponsoredDepositViaBackend(
-    depositPayload.amountMist
+  // Step 1: Build deposit transaction kind locally (fresh coin refs)
+  console.log('[QuickSell] Building tx kind locally...');
+  const txKindBase64 = await buildDepositTransactionKind(
+    depositPayload.poolObjectId,
+    depositPayload.packageId,
+    depositPayload.usdcType,
+    depositPayload.amountMist,
+    zkLoginData.suiAddress
   );
 
-  // Sign the transaction with zkLogin
+  // Step 2: Request sponsorship from backend
+  console.log('[QuickSell] Requesting sponsorship...');
+  const { txBytesBase64, sponsorSignature } =
+    await sponsorTransactionKindViaBackend(txKindBase64);
+
+  // Step 3: Sign with zkLogin
+  console.log('[QuickSell] Signing with zkLogin...');
   const txBytesArray = Uint8Array.from(Buffer.from(txBytesBase64, 'base64'));
   const keypair = await reconstructKeypair(zkLoginData.ephemeralKey);
-
-  // Debug: Verify keypair reconstruction
-  const reconstructedPubkey = keypair.getPublicKey().toBase64();
-  console.log('[zkLogin] Reconstructed pubkey:', reconstructedPubkey);
-  console.log('[zkLogin] Stored pubkey match:', reconstructedPubkey === zkLoginData.ephemeralKey.publicKey);
-
   const { signature: userSignature } = await keypair.signTransaction(txBytesArray);
-  console.log('[zkLogin] User signature created');
 
-  // Assemble zkLogin signature
   const zkLoginSig = getZkLoginSignature({
     inputs: {
       ...zkLoginData.proof,
@@ -479,8 +537,8 @@ export const executeQuickSellDeposit = async (
     userSignature,
   });
 
-  // Try executing directly via RPC first (bypass backend to debug)
-  console.log('[zkLogin] Executing with signatures...');
+  // Step 4: Execute dual-signed transaction
+  console.log('[QuickSell] Executing dual-signed tx...');
   const execResponse = await fetch(TESTNET_RPC, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -490,14 +548,15 @@ export const executeQuickSellDeposit = async (
       method: 'sui_executeTransactionBlock',
       params: [
         txBytesBase64,
-        [zkLoginSig, sponsorSignature], // user first, sponsor second
+        [zkLoginSig, sponsorSignature],
         { showEffects: true },
         'WaitForLocalExecution',
       ],
     }),
   });
+
   const execData = await execResponse.json();
-  console.log('[zkLogin] Execute result:', JSON.stringify(execData, null, 2));
+  console.log('[QuickSell] Result:', execData.result?.effects?.status);
 
   if (execData.error) {
     throw new Error(execData.error.message);

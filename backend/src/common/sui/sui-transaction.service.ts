@@ -335,12 +335,13 @@ export class SuiTransactionService implements OnModuleInit {
   }
 
   /**
-   * Build a sponsored deposit transaction for Quick Sell
-   * Returns tx bytes for user to sign with zkLogin
+   * Sponsor a user-built transaction kind (Sui docs pattern)
+   * User builds tx locally with onlyTransactionKind: true, sends kind bytes here
+   * We add gas data and sign as sponsor
    */
-  async buildSponsoredDeposit(
+  async sponsorTransactionKind(
+    txKindBase64: string,
     senderAddress: string,
-    amountMist: string,
   ): Promise<{
     txBytesBase64: string;
     sponsorSignature: string;
@@ -353,16 +354,13 @@ export class SuiTransactionService implements OnModuleInit {
     const { Transaction } = await import('@mysten/sui/transactions');
     const sponsorAddress = this.signer.toSuiAddress();
 
-    // Get sender's USDC coins
-    const usdcCoins = await this.client.getCoins({
-      owner: senderAddress,
-      coinType: this.usdcType,
-      limit: 50,
-    });
+    // Reconstruct transaction from kind bytes
+    const kindBytes = Buffer.from(txKindBase64, 'base64');
+    const tx = Transaction.fromKind(kindBytes);
 
-    if (!usdcCoins.data?.length) {
-      throw new Error('No USDC coins found in wallet');
-    }
+    // Set sender and gas owner
+    tx.setSender(senderAddress);
+    tx.setGasOwner(sponsorAddress);
 
     // Get sponsor's SUI coins for gas
     const gasCoins = await this.client.getCoins({
@@ -375,52 +373,6 @@ export class SuiTransactionService implements OnModuleInit {
       throw new Error('Sponsor has no SUI for gas');
     }
 
-    // Build the deposit transaction
-    const tx = new Transaction();
-    const amount = BigInt(amountMist);
-
-    // Use object refs for USDC coins
-    const coinRefs = usdcCoins.data.map((c: any) =>
-      tx.objectRef({
-        objectId: c.coinObjectId,
-        version: c.version,
-        digest: c.digest,
-      }),
-    );
-
-    // Merge coins if needed
-    if (coinRefs.length > 1) {
-      tx.mergeCoins(coinRefs[0], coinRefs.slice(1));
-    }
-
-    // Split exact amount
-    const [depositCoin] = tx.splitCoins(coinRefs[0], [amount]);
-
-    // Get pool object info
-    const poolObject = await this.client.getObject({
-      id: this.poolId,
-      options: { showContent: false },
-    });
-
-    // Deposit to pool
-    tx.moveCall({
-      target: `${this.packageId}::liquidity_pool::deposit`,
-      typeArguments: [this.usdcType],
-      arguments: [
-        tx.objectRef({
-          objectId: poolObject.data.objectId,
-          version: poolObject.data.version,
-          digest: poolObject.data.digest,
-        }),
-        depositCoin,
-      ],
-    });
-
-    // Set sender and gas owner
-    tx.setSender(senderAddress);
-    tx.setGasOwner(sponsorAddress);
-
-    // Set gas payment from sponsor
     const gasCoin = gasCoins.data[0];
     tx.setGasPayment([
       {
@@ -433,17 +385,17 @@ export class SuiTransactionService implements OnModuleInit {
     // Set gas config
     const gasPrice = await this.client.getReferenceGasPrice();
     tx.setGasPrice(gasPrice);
-    tx.setGasBudget(50000000n);
+    tx.setGasBudget(50000000n); // 0.05 SUI
 
-    // Build the transaction
+    // Build the final transaction
     const txBytes = await tx.build({ client: this.client });
 
-    // Sponsor signs the transaction
+    // Sponsor signs
     const { signature: sponsorSignature } =
       await this.signer.signTransaction(txBytes);
 
     this.logger.log(
-      `Built sponsored deposit: ${amountMist} MIST from ${senderAddress}`,
+      `Sponsored tx kind for ${senderAddress}, gas by ${sponsorAddress}`,
     );
 
     return {
@@ -452,4 +404,5 @@ export class SuiTransactionService implements OnModuleInit {
       sponsorAddress,
     };
   }
+
 }
