@@ -60,7 +60,7 @@ export default function ConvertScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDepositing, setIsDepositing] = useState(false);
 
-  const { canAccessVndFeatures } = useAuthStore();
+  const { canAccessVndFeatures, zkLoginData } = useAuthStore();
   const { usdcBalance } = useWalletStore();
   const { accounts: bankAccounts, isLoading: isBankAccountsLoading, loadAccounts } = useBankAccountStore();
 
@@ -219,11 +219,15 @@ export default function ConvertScreen() {
     setStep('input');
   };
 
-  const { zkLoginData } = useAuthStore();
-
   const handleDeposit = async () => {
-    if (!orderData?.depositPayload || !zkLoginData) {
-      Alert.alert('Error', 'Missing deposit data or wallet not connected');
+    if (!orderData?.depositPayload) {
+      Alert.alert('Error', 'Missing deposit payload from order');
+      console.error('depositPayload missing:', orderData);
+      return;
+    }
+    if (!zkLoginData) {
+      Alert.alert('Error', 'Wallet not connected. Please re-login.');
+      console.error('zkLoginData missing');
       return;
     }
 
