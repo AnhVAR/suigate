@@ -535,7 +535,13 @@ export const executeQuickSellDeposit = async (
 
   const keypair = await reconstructKeypair(zkLoginData.ephemeralKey);
   const ephemeralPubKey = keypair.getPublicKey().toBase64();
+
+  // Get extended pubkey (what prover uses)
+  const { getExtendedEphemeralPublicKey } = await import('@mysten/sui/zklogin');
+  const extendedPubKey = getExtendedEphemeralPublicKey(keypair.getPublicKey());
+
   console.log('[QuickSell] Ephemeral pubkey:', ephemeralPubKey);
+  console.log('[QuickSell] Extended pubkey:', extendedPubKey);
   console.log('[QuickSell] Stored pubkey:', zkLoginData.ephemeralKey.publicKey);
   console.log('[QuickSell] Pubkey match:', ephemeralPubKey === zkLoginData.ephemeralKey.publicKey);
 
