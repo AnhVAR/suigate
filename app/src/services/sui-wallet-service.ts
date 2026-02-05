@@ -411,6 +411,22 @@ const buildSponsoredDepositViaBackend = async (
   return response.json();
 };
 
+/** Get current epoch from RPC */
+const getCurrentEpochRpc = async (): Promise<number> => {
+  const response = await fetch(TESTNET_RPC, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'suix_getLatestSuiSystemState',
+      params: [],
+    }),
+  });
+  const data = await response.json();
+  return Number(data.result?.epoch || 0);
+};
+
 /**
  * Execute Quick Sell deposit with zkLogin (sponsored by backend)
  */
@@ -426,6 +442,16 @@ export const executeQuickSellDeposit = async (
 ): Promise<{ digest: string; success: boolean }> => {
   await loadSuiModules();
 
+  // Debug: Check epoch expiry
+  const currentEpoch = await getCurrentEpochRpc();
+  console.log('[zkLogin] Current epoch:', currentEpoch);
+  console.log('[zkLogin] Max epoch:', zkLoginData.maxEpoch);
+  console.log('[zkLogin] Ephemeral pubkey:', zkLoginData.ephemeralKey.publicKey);
+
+  if (currentEpoch >= zkLoginData.maxEpoch) {
+    throw new Error(`zkLogin session expired. Current epoch ${currentEpoch} >= max epoch ${zkLoginData.maxEpoch}. Please re-login.`);
+  }
+
   // Backend builds the full transaction with gas sponsorship
   const { txBytesBase64, sponsorSignature } = await buildSponsoredDepositViaBackend(
     depositPayload.amountMist
@@ -434,7 +460,14 @@ export const executeQuickSellDeposit = async (
   // Sign the transaction with zkLogin
   const txBytesArray = Uint8Array.from(Buffer.from(txBytesBase64, 'base64'));
   const keypair = await reconstructKeypair(zkLoginData.ephemeralKey);
+
+  // Debug: Verify keypair reconstruction
+  const reconstructedPubkey = keypair.getPublicKey().toBase64();
+  console.log('[zkLogin] Reconstructed pubkey:', reconstructedPubkey);
+  console.log('[zkLogin] Stored pubkey match:', reconstructedPubkey === zkLoginData.ephemeralKey.publicKey);
+
   const { signature: userSignature } = await keypair.signTransaction(txBytesArray);
+  console.log('[zkLogin] User signature created');
 
   // Assemble zkLogin signature
   const zkLoginSig = getZkLoginSignature({
