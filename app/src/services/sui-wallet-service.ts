@@ -500,6 +500,7 @@ export const executeQuickSellDeposit = async (
   // Validate zkLogin session
   const currentEpoch = await getCurrentEpochRpc();
   console.log('[QuickSell] Epoch check:', currentEpoch, '/', zkLoginData.maxEpoch);
+  console.log('[QuickSell] User suiAddress:', zkLoginData.suiAddress);
 
   if (currentEpoch >= zkLoginData.maxEpoch) {
     throw new Error(
@@ -542,8 +543,11 @@ export const executeQuickSellDeposit = async (
   console.log('[QuickSell] userSignature (first 50):', userSignature.substring(0, 50));
 
   console.log('[QuickSell] zkLoginData.maxEpoch:', zkLoginData.maxEpoch);
-  console.log('[QuickSell] zkLoginData.addressSeed (first 20):', zkLoginData.addressSeed.substring(0, 20));
+  console.log('[QuickSell] zkLoginData.addressSeed:', zkLoginData.addressSeed);
   console.log('[QuickSell] zkLoginData.proof keys:', Object.keys(zkLoginData.proof));
+  console.log('[QuickSell] proof.proofPoints keys:', Object.keys(zkLoginData.proof.proofPoints || {}));
+  console.log('[QuickSell] proof.issBase64Details:', JSON.stringify(zkLoginData.proof.issBase64Details));
+  console.log('[QuickSell] proof.headerBase64 (first 50):', zkLoginData.proof.headerBase64?.substring(0, 50));
 
   const zkLoginSig = getZkLoginSignature({
     inputs: {
