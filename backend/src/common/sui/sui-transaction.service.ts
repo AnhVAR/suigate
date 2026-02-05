@@ -229,4 +229,227 @@ export class SuiTransactionService implements OnModuleInit {
       return result.digest;
     }, 'signAndExecute');
   }
+
+  /**
+   * Get sponsor address (admin wallet that pays for gas)
+   */
+  getSponsorAddress(): string {
+    if (!this.signer) {
+      throw new Error('Sponsor signer not initialized');
+    }
+    return this.signer.toSuiAddress();
+  }
+
+  /**
+   * Sponsor a user transaction by adding gas payment and signing
+   * Returns the sponsor signature and modified transaction bytes
+   */
+  async sponsorTransaction(
+    txBytesBase64: string,
+    senderAddress: string,
+  ): Promise<{
+    sponsorSignature: string;
+    txBytesWithGas: string;
+    sponsorAddress: string;
+  }> {
+    if (!this.signer) {
+      throw new Error('Sponsor signer not initialized');
+    }
+
+    const { Transaction } = await import('@mysten/sui/transactions');
+
+    // Deserialize the transaction
+    const txBytes = Buffer.from(txBytesBase64, 'base64');
+    const tx = Transaction.from(txBytes);
+
+    // Set gas owner to sponsor (admin wallet)
+    const sponsorAddress = this.signer.toSuiAddress();
+    tx.setSender(senderAddress);
+    tx.setGasOwner(sponsorAddress);
+
+    // Get gas coins from sponsor wallet
+    const gasCoins = await this.client.getCoins({
+      owner: sponsorAddress,
+      coinType: '0x2::sui::SUI',
+      limit: 1,
+    });
+
+    if (!gasCoins.data?.length) {
+      throw new Error('Sponsor has no SUI for gas');
+    }
+
+    const gasCoin = gasCoins.data[0];
+    tx.setGasPayment([
+      {
+        objectId: gasCoin.coinObjectId,
+        version: gasCoin.version,
+        digest: gasCoin.digest,
+      },
+    ]);
+
+    // Set gas budget and price
+    const gasPrice = await this.client.getReferenceGasPrice();
+    tx.setGasPrice(gasPrice);
+    tx.setGasBudget(50000000n); // 0.05 SUI
+
+    // Build the transaction with gas info
+    const builtTx = await tx.build({ client: this.client });
+
+    // Sponsor signs the transaction
+    const { signature: sponsorSignature } =
+      await this.signer.signTransaction(builtTx);
+
+    this.logger.log(
+      `Sponsored transaction for ${senderAddress}, gas paid by ${sponsorAddress}`,
+    );
+
+    return {
+      sponsorSignature,
+      txBytesWithGas: Buffer.from(builtTx).toString('base64'),
+      sponsorAddress,
+    };
+  }
+
+  /**
+   * Execute a sponsored transaction with both user and sponsor signatures
+   */
+  async executeSponsoredTransaction(
+    txBytesBase64: string,
+    userSignature: string,
+    sponsorSignature: string,
+  ): Promise<{ digest: string; success: boolean }> {
+    return this.withRetry(async () => {
+      const result = await this.client.executeTransactionBlock({
+        transactionBlock: txBytesBase64,
+        signature: [userSignature, sponsorSignature],
+        options: { showEffects: true },
+      });
+
+      const success = result.effects?.status?.status === 'success';
+      this.logger.log(
+        `Sponsored transaction executed: ${result.digest}, success: ${success}`,
+      );
+
+      return { digest: result.digest, success };
+    }, 'executeSponsoredTransaction');
+  }
+
+  /**
+   * Build a sponsored deposit transaction for Quick Sell
+   * Returns tx bytes for user to sign with zkLogin
+   */
+  async buildSponsoredDeposit(
+    senderAddress: string,
+    amountMist: string,
+  ): Promise<{
+    txBytesBase64: string;
+    sponsorSignature: string;
+    sponsorAddress: string;
+  }> {
+    if (!this.signer) {
+      throw new Error('Sponsor signer not initialized');
+    }
+
+    const { Transaction } = await import('@mysten/sui/transactions');
+    const sponsorAddress = this.signer.toSuiAddress();
+
+    // Get sender's USDC coins
+    const usdcCoins = await this.client.getCoins({
+      owner: senderAddress,
+      coinType: this.usdcType,
+      limit: 50,
+    });
+
+    if (!usdcCoins.data?.length) {
+      throw new Error('No USDC coins found in wallet');
+    }
+
+    // Get sponsor's SUI coins for gas
+    const gasCoins = await this.client.getCoins({
+      owner: sponsorAddress,
+      coinType: '0x2::sui::SUI',
+      limit: 1,
+    });
+
+    if (!gasCoins.data?.length) {
+      throw new Error('Sponsor has no SUI for gas');
+    }
+
+    // Build the deposit transaction
+    const tx = new Transaction();
+    const amount = BigInt(amountMist);
+
+    // Use object refs for USDC coins
+    const coinRefs = usdcCoins.data.map((c: any) =>
+      tx.objectRef({
+        objectId: c.coinObjectId,
+        version: c.version,
+        digest: c.digest,
+      }),
+    );
+
+    // Merge coins if needed
+    if (coinRefs.length > 1) {
+      tx.mergeCoins(coinRefs[0], coinRefs.slice(1));
+    }
+
+    // Split exact amount
+    const [depositCoin] = tx.splitCoins(coinRefs[0], [amount]);
+
+    // Get pool object info
+    const poolObject = await this.client.getObject({
+      id: this.poolId,
+      options: { showContent: false },
+    });
+
+    // Deposit to pool
+    tx.moveCall({
+      target: `${this.packageId}::liquidity_pool::deposit`,
+      typeArguments: [this.usdcType],
+      arguments: [
+        tx.objectRef({
+          objectId: poolObject.data.objectId,
+          version: poolObject.data.version,
+          digest: poolObject.data.digest,
+        }),
+        depositCoin,
+      ],
+    });
+
+    // Set sender and gas owner
+    tx.setSender(senderAddress);
+    tx.setGasOwner(sponsorAddress);
+
+    // Set gas payment from sponsor
+    const gasCoin = gasCoins.data[0];
+    tx.setGasPayment([
+      {
+        objectId: gasCoin.coinObjectId,
+        version: gasCoin.version,
+        digest: gasCoin.digest,
+      },
+    ]);
+
+    // Set gas config
+    const gasPrice = await this.client.getReferenceGasPrice();
+    tx.setGasPrice(gasPrice);
+    tx.setGasBudget(50000000n);
+
+    // Build the transaction
+    const txBytes = await tx.build({ client: this.client });
+
+    // Sponsor signs the transaction
+    const { signature: sponsorSignature } =
+      await this.signer.signTransaction(txBytes);
+
+    this.logger.log(
+      `Built sponsored deposit: ${amountMist} MIST from ${senderAddress}`,
+    );
+
+    return {
+      txBytesBase64: Buffer.from(txBytes).toString('base64'),
+      sponsorSignature,
+      sponsorAddress,
+    };
+  }
 }

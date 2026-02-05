@@ -63,7 +63,7 @@ interface AuthState {
     zkLoginData?: ZkLoginData;
   }) => Promise<void>;
   setZkLoginData: (data: ZkLoginData) => void;
-  restoreZkLoginSession: () => Promise<void>;
+  restoreZkLoginSession: (userIdOverride?: string) => Promise<void>;
   logout: () => Promise<void>;
   checkAuth: () => Promise<void>;
   fetchProfile: () => Promise<void>;
@@ -120,6 +120,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     };
     await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(authData));
 
+    // Store zkLoginData for session persistence
+    if (data.zkLoginData) {
+      await AsyncStorage.setItem(
+        '@suigate:zklogin_data',
+        JSON.stringify(data.zkLoginData)
+      );
+      console.log('[Auth] zkLoginData stored for persistence');
+    }
+
     set({
       isAuthenticated: true,
       userId: data.userId,
@@ -143,27 +152,48 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ zkLoginData: data, zkLoginRestored: true });
   },
 
-  restoreZkLoginSession: async () => {
-    const { userId } = get();
+  restoreZkLoginSession: async (userIdOverride?: string) => {
+    const userId = userIdOverride || get().userId;
+    console.log('[Auth] Restoring zkLogin session for userId:', userId);
+
     if (!userId) {
+      console.log('[Auth] No userId, skipping zkLogin restore');
       set({ zkLoginRestored: true });
       return;
     }
 
     try {
+      // First try direct zkLoginData storage (simpler, more reliable)
+      const storedZkData = await AsyncStorage.getItem('@suigate:zklogin_data');
+      if (storedZkData) {
+        const zkLoginData = JSON.parse(storedZkData);
+        console.log('[Auth] zkLoginData restored from direct storage');
+        set({ zkLoginData, zkLoginRestored: true });
+        return;
+      }
+
+      // Fallback to component-based restore
       const { restoreSession } = await getZkLoginServices();
       const result = await restoreSession(userId);
+
+      console.log('[Auth] zkLogin restore result:', {
+        restored: result.restored,
+        hasData: !!result.zkLoginData,
+        reason: result.reason,
+      });
 
       if (result.restored && result.zkLoginData) {
         set({
           zkLoginData: result.zkLoginData,
           zkLoginRestored: true,
         });
+        console.log('[Auth] zkLogin session restored successfully');
       } else {
+        console.log('[Auth] zkLogin session not restored:', result.reason);
         set({ zkLoginRestored: true });
       }
     } catch (error) {
-      console.error('zkLogin restore error:', error);
+      console.error('[Auth] zkLogin restore error:', error);
       set({ zkLoginRestored: true });
     }
   },
@@ -213,6 +243,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
     }
 
+    // Clear direct zkLoginData storage
+    await AsyncStorage.removeItem('@suigate:zklogin_data');
+
     // Clear tokens
     await clearAllTokens();
 
@@ -255,8 +288,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           isLoading: false,
         });
 
-        // Restore zkLogin session data
-        await get().restoreZkLoginSession();
+        // Restore zkLogin session data (pass userId directly to avoid race condition)
+        await get().restoreZkLoginSession(userId);
 
         // TODO: Validate token with backend /users/me endpoint
       } else {

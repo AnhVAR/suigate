@@ -13,20 +13,15 @@ const TEST_USDC_TYPE =
 
 const FALLBACK_VND_RATE = 25000;
 
-// Lazy-loaded Sui SDK modules
-let SuiJsonRpcClient: any = null;
+// Lazy-loaded Sui SDK modules (only Transaction and zkLogin - no jsonRpc due to RN compat issues)
 let Transaction: any = null;
 let getZkLoginSignature: any = null;
 
-// Testnet RPC URL (hardcoded to avoid import issues)
+// Testnet RPC URL
 const TESTNET_RPC = 'https://fullnode.testnet.sui.io:443';
 
 /** Load Sui SDK modules dynamically */
 const loadSuiModules = async () => {
-  if (!SuiJsonRpcClient) {
-    const jsonRpc = await import('@mysten/sui/jsonRpc');
-    SuiJsonRpcClient = jsonRpc.SuiJsonRpcClient;
-  }
   if (!Transaction) {
     const tx = await import('@mysten/sui/transactions');
     Transaction = tx.Transaction;
@@ -37,32 +32,36 @@ const loadSuiModules = async () => {
   }
 };
 
-/** Create SuiClient for testnet */
-const createSuiClient = async () => {
-  await loadSuiModules();
-  return new SuiJsonRpcClient({ url: TESTNET_RPC });
-};
-
 export interface WalletBalance {
   usdc: number;
   vndEquivalent: number;
   rate: number;
 }
 
+/** Direct RPC call to get balance */
+const getBalanceRpc = async (owner: string, coinType: string): Promise<string> => {
+  const response = await fetch(TESTNET_RPC, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'suix_getBalance',
+      params: [owner, coinType],
+    }),
+  });
+  const data = await response.json();
+  if (data.error) throw new Error(data.error.message);
+  return data.result?.totalBalance || '0';
+};
+
 export const fetchWalletBalance = async (
   suiAddress: string,
   rate?: number
 ): Promise<WalletBalance> => {
   try {
-    const client = await createSuiClient();
-
-    // Query TEST_USDC balance from Sui RPC
-    const balance = await client.getBalance({
-      owner: suiAddress,
-      coinType: TEST_USDC_TYPE,
-    });
-
-    const usdcBalance = Number(balance.totalBalance) / 1_000_000;
+    const totalBalance = await getBalanceRpc(suiAddress, TEST_USDC_TYPE);
+    const usdcBalance = Number(totalBalance) / 1_000_000;
     const currentRate = rate || FALLBACK_VND_RATE;
 
     return {
@@ -94,33 +93,159 @@ export const fetchCurrentRate = async (): Promise<number> => {
  * Fetch real SUI balance from testnet
  */
 export const fetchSuiBalance = async (suiAddress: string): Promise<bigint> => {
-  const client = await createSuiClient();
-  const balance = await client.getBalance({
-    owner: suiAddress,
-    coinType: '0x2::sui::SUI',
+  const totalBalance = await getBalanceRpc(suiAddress, '0x2::sui::SUI');
+  return BigInt(totalBalance);
+};
+
+/** Direct RPC call to execute transaction */
+const executeTransactionRpc = async (
+  txBytes: string,
+  signature: string
+): Promise<{ digest: string; effects: any }> => {
+  const response = await fetch(TESTNET_RPC, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'sui_executeTransactionBlock',
+      params: [txBytes, [signature], { showEffects: true, showEvents: true }, 'WaitForLocalExecution'],
+    }),
   });
-  return BigInt(balance.totalBalance);
+  const data = await response.json();
+  if (data.error) throw new Error(data.error.message);
+  return { digest: data.result.digest, effects: data.result.effects };
+};
+
+/** Direct RPC call to get reference gas price */
+const getReferenceGasPriceRpc = async (): Promise<string> => {
+  const response = await fetch(TESTNET_RPC, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'suix_getReferenceGasPrice',
+      params: [],
+    }),
+  });
+  const data = await response.json();
+  if (data.error) throw new Error(data.error.message);
+  return data.result;
+};
+
+/** Get object info via RPC */
+const getObjectRpc = async (objectId: string): Promise<{ objectId: string; version: string; digest: string }> => {
+  const response = await fetch(TESTNET_RPC, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'sui_getObject',
+      params: [objectId, { showContent: false }],
+    }),
+  });
+  const data = await response.json();
+  if (data.error) throw new Error(data.error.message);
+  if (!data.result?.data) throw new Error(`Object not found: ${objectId}`);
+  return {
+    objectId: data.result.data.objectId,
+    version: data.result.data.version,
+    digest: data.result.data.digest,
+  };
+};
+
+/** Get SUI coins for gas via RPC */
+const getSuiCoinsRpc = async (owner: string): Promise<any[]> => {
+  const response = await fetch(TESTNET_RPC, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'suix_getCoins',
+      params: [owner, '0x2::sui::SUI', null, 10],
+    }),
+  });
+  const data = await response.json();
+  if (data.error) throw new Error(data.error.message);
+  return data.result?.data || [];
+};
+
+/** Get API URL */
+const getApiUrl = (): string => {
+  return process.env.EXPO_PUBLIC_API_URL || 'http://192.168.2.34:3000';
+};
+
+/** Get auth token from secure storage */
+const getAuthToken = async (): Promise<string | null> => {
+  const { getAccessToken } = await import('../api/secure-token-storage');
+  return getAccessToken();
 };
 
 /**
- * Sign and execute transaction with zkLogin
+ * Execute sponsored transaction via backend
+ */
+const executeSponsoredViaBackend = async (
+  txBytesBase64: string,
+  userSignature: string,
+  sponsorSignature: string
+): Promise<{ digest: string; success: boolean }> => {
+  const token = await getAuthToken();
+  if (!token) throw new Error('Not authenticated');
+
+  const response = await fetch(`${getApiUrl()}/wallet/execute-sponsored`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ txBytesBase64, userSignature, sponsorSignature }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.message || 'Failed to execute transaction');
+  }
+
+  return response.json();
+};
+
+/**
+ * Sign and execute transaction with zkLogin (self-paid gas - user must have SUI)
  */
 export const signAndExecuteWithZkLogin = async (
   txb: any,
   zkLoginData: ZkLoginData
 ): Promise<{ digest: string; effects: unknown }> => {
   await loadSuiModules();
-  const client = await createSuiClient();
 
-  // Set sender address
+  // Get gas coins for the sender
+  const gasCoins = await getSuiCoinsRpc(zkLoginData.suiAddress);
+  if (!gasCoins.length) {
+    throw new Error('No SUI coins for gas. Please get some testnet SUI first.');
+  }
+
+  // Set sender and gas config
   txb.setSender(zkLoginData.suiAddress);
+  const gasPrice = await getReferenceGasPriceRpc();
+  txb.setGasPrice(BigInt(gasPrice));
+  txb.setGasBudget(BigInt(50000000));
+
+  // Set explicit gas payment with object refs
+  txb.setGasPayment([{
+    objectId: gasCoins[0].coinObjectId,
+    version: gasCoins[0].version,
+    digest: gasCoins[0].digest,
+  }]);
+
+  // Build transaction locally
+  const txBytesArray = await txb.build();
 
   // Sign with ephemeral keypair
   const keypair = await reconstructKeypair(zkLoginData.ephemeralKey);
-  const { bytes, signature: userSignature } = await txb.sign({
-    client,
-    signer: keypair,
-  });
+  const { signature: userSignature } = await keypair.signTransaction(txBytesArray);
 
   // Assemble zkLogin signature
   const zkLoginSig = getZkLoginSignature({
@@ -133,28 +258,22 @@ export const signAndExecuteWithZkLogin = async (
   });
 
   // Execute transaction
-  const result = await client.executeTransactionBlock({
-    transactionBlock: bytes,
-    signature: zkLoginSig,
-    options: {
-      showEffects: true,
-      showEvents: true,
-    },
-  });
+  const result = await executeTransactionRpc(
+    Buffer.from(txBytesArray).toString('base64'),
+    zkLoginSig
+  );
 
-  return {
-    digest: result.digest,
-    effects: result.effects,
-  };
+  return { digest: result.digest, effects: result.effects };
 };
 
 /**
  * Build a SUI transfer transaction
  */
-export const buildSuiTransferTransaction = (
+export const buildSuiTransferTransaction = async (
   recipient: string,
   amountMist: bigint
-): any => {
+): Promise<any> => {
+  await loadSuiModules();
   const txb = new Transaction();
   const [coin] = txb.splitCoins(txb.gas, [amountMist]);
   txb.transferObjects([coin], recipient);
@@ -169,7 +288,7 @@ export const transferSuiWithZkLogin = async (
   amountMist: bigint,
   zkLoginData: ZkLoginData
 ): Promise<{ digest: string; success: boolean }> => {
-  const txb = buildSuiTransferTransaction(recipient, amountMist);
+  const txb = await buildSuiTransferTransaction(recipient, amountMist);
   const result = await signAndExecuteWithZkLogin(txb, zkLoginData);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -181,20 +300,32 @@ export const transferSuiWithZkLogin = async (
 };
 
 /**
- * Estimate gas for a transaction (dry run)
+ * Estimate gas for a transaction (returns default budget since we can't dry run without client)
  */
 export const estimateGas = async (
-  txb: any,
-  sender: string
+  _txb: any,
+  _sender: string
 ): Promise<bigint> => {
-  const client = await createSuiClient();
-  txb.setSender(sender);
+  // Return a safe default gas budget (50M MIST = 0.05 SUI)
+  // In React Native without full SDK, we can't easily dry run
+  return BigInt(50000000);
+};
 
-  const dryRunResult = await client.dryRunTransactionBlock({
-    transactionBlock: await txb.build({ client }),
+/** Direct RPC call to get coins (avoids SuiClient compatibility issues) */
+const getCoinsRpc = async (owner: string, coinType: string): Promise<any[]> => {
+  const response = await fetch(TESTNET_RPC, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'suix_getCoins',
+      params: [owner, coinType, null, 50],
+    }),
   });
-
-  return BigInt(dryRunResult.input.gasData.budget);
+  const data = await response.json();
+  if (data.error) throw new Error(data.error.message);
+  return data.result?.data || [];
 };
 
 /**
@@ -208,38 +339,41 @@ export const buildDepositTransaction = async (
   senderAddress: string
 ): Promise<any> => {
   await loadSuiModules();
-  const client = await createSuiClient();
 
-  // Get USDC coins owned by sender
-  const coins = await client.getCoins({
-    owner: senderAddress,
-    coinType: usdcType,
-  });
+  // Get USDC coins owned by sender via direct RPC
+  const coins = await getCoinsRpc(senderAddress, usdcType);
 
-  if (!coins.data || coins.data.length === 0) {
+  if (!coins || coins.length === 0) {
     throw new Error('No USDC coins found in wallet');
   }
+
+  // Get pool object info for explicit ref
+  const poolInfo = await getObjectRpc(poolObjectId);
 
   const txb = new Transaction();
   const amount = BigInt(amountMist);
 
-  // Merge coins if needed and split exact amount
-  const coinIds = coins.data.map((c: any) => c.coinObjectId);
+  // Use explicit object refs for coins (not just IDs)
+  const coinRefs = coins.map((c: any) => txb.objectRef({
+    objectId: c.coinObjectId,
+    version: c.version,
+    digest: c.digest,
+  }));
 
-  if (coinIds.length > 1) {
+  if (coinRefs.length > 1) {
     // Merge all coins into first one
-    txb.mergeCoins(coinIds[0], coinIds.slice(1));
+    txb.mergeCoins(coinRefs[0], coinRefs.slice(1));
   }
 
   // Split exact amount needed
-  const [depositCoin] = txb.splitCoins(coinIds[0], [amount]);
+  const [depositCoin] = txb.splitCoins(coinRefs[0], [amount]);
 
-  // Call deposit function on liquidity pool
+  // Call deposit function on liquidity pool with explicit object ref
   txb.moveCall({
     target: `${packageId}::liquidity_pool::deposit`,
     typeArguments: [usdcType],
     arguments: [
-      txb.object(poolObjectId),
+      txb.objectRef(poolInfo),
       depositCoin,
     ],
   });
@@ -248,7 +382,37 @@ export const buildDepositTransaction = async (
 };
 
 /**
- * Execute Quick Sell deposit with zkLogin
+ * Build sponsored deposit via backend
+ */
+const buildSponsoredDepositViaBackend = async (
+  amountMist: string
+): Promise<{
+  txBytesBase64: string;
+  sponsorSignature: string;
+  sponsorAddress: string;
+}> => {
+  const token = await getAuthToken();
+  if (!token) throw new Error('Not authenticated');
+
+  const response = await fetch(`${getApiUrl()}/wallet/build-sponsored-deposit`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ amountMist }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.message || 'Failed to build sponsored deposit');
+  }
+
+  return response.json();
+};
+
+/**
+ * Execute Quick Sell deposit with zkLogin (sponsored by backend)
  */
 export const executeQuickSellDeposit = async (
   depositPayload: {
@@ -256,23 +420,38 @@ export const executeQuickSellDeposit = async (
     packageId: string;
     usdcType: string;
     amountMist: string;
+    orderId?: string;
   },
   zkLoginData: ZkLoginData
 ): Promise<{ digest: string; success: boolean }> => {
-  const txb = await buildDepositTransaction(
-    depositPayload.poolObjectId,
-    depositPayload.packageId,
-    depositPayload.usdcType,
-    depositPayload.amountMist,
-    zkLoginData.suiAddress
+  await loadSuiModules();
+
+  // Backend builds the full transaction with gas sponsorship
+  const { txBytesBase64, sponsorSignature } = await buildSponsoredDepositViaBackend(
+    depositPayload.amountMist
   );
 
-  const result = await signAndExecuteWithZkLogin(txb, zkLoginData);
+  // Sign the transaction with zkLogin
+  const txBytesArray = Uint8Array.from(Buffer.from(txBytesBase64, 'base64'));
+  const keypair = await reconstructKeypair(zkLoginData.ephemeralKey);
+  const { signature: userSignature } = await keypair.signTransaction(txBytesArray);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const effects = result.effects as any;
-  return {
-    digest: result.digest,
-    success: effects?.status?.status === 'success',
-  };
+  // Assemble zkLogin signature
+  const zkLoginSig = getZkLoginSignature({
+    inputs: {
+      ...zkLoginData.proof,
+      addressSeed: zkLoginData.addressSeed,
+    },
+    maxEpoch: zkLoginData.maxEpoch,
+    userSignature,
+  });
+
+  // Execute with both signatures via backend
+  const result = await executeSponsoredViaBackend(
+    txBytesBase64,
+    zkLoginSig,
+    sponsorSignature
+  );
+
+  return result;
 };

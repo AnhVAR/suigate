@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { SuiClientService } from '../../common/sui/sui-client.service';
+import { SuiTransactionService } from '../../common/sui/sui-transaction.service';
 import { RatesService } from '../rates/rates.service';
 import { WalletBalanceDto } from './dto/wallet-balance.dto';
 
@@ -9,6 +10,7 @@ export class WalletService {
 
   constructor(
     private suiClient: SuiClientService,
+    private suiTransaction: SuiTransactionService,
     private ratesService: RatesService,
   ) {}
 
@@ -26,5 +28,43 @@ export class WalletService {
       usdcBalanceVnd: Math.round(vndEquivalent).toString(),
       updatedAt: new Date().toISOString(),
     };
+  }
+
+  async getSponsorAddress(): Promise<string> {
+    return this.suiTransaction.getSponsorAddress();
+  }
+
+  async sponsorTransaction(
+    txBytesBase64: string,
+    senderAddress: string,
+  ): Promise<{
+    sponsorSignature: string;
+    txBytesWithGas: string;
+    sponsorAddress: string;
+  }> {
+    return this.suiTransaction.sponsorTransaction(txBytesBase64, senderAddress);
+  }
+
+  async executeSponsoredTransaction(
+    txBytesBase64: string,
+    userSignature: string,
+    sponsorSignature: string,
+  ): Promise<{ digest: string; success: boolean }> {
+    return this.suiTransaction.executeSponsoredTransaction(
+      txBytesBase64,
+      userSignature,
+      sponsorSignature,
+    );
+  }
+
+  async buildSponsoredDeposit(
+    senderAddress: string,
+    amountMist: string,
+  ): Promise<{
+    txBytesBase64: string;
+    sponsorSignature: string;
+    sponsorAddress: string;
+  }> {
+    return this.suiTransaction.buildSponsoredDeposit(senderAddress, amountMist);
   }
 }

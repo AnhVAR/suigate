@@ -19,3 +19,17 @@ global.Buffer = Buffer;
 // Process global - required by some dependencies
 import process from 'process';
 global.process = process;
+
+// EventTarget polyfill - required by Sui SDK client
+import { EventTarget } from 'event-target-shim';
+if (typeof global.EventTarget === 'undefined') {
+  (global as any).EventTarget = EventTarget;
+}
+
+// AbortController polyfill - required by Sui SDK fetch operations
+import 'abortcontroller-polyfill/dist/polyfill-patch-fetch';
+
+// Ensure Headers, Request, Response are available (should be from React Native)
+if (typeof global.Headers === 'undefined') {
+  (global as any).Headers = class Headers extends Map {};
+}
