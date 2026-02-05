@@ -391,9 +391,9 @@ export class SuiTransactionService implements OnModuleInit {
     tx.setGasPrice(gasPrice);
     tx.setGasBudget(50000000n); // 0.05 SUI
 
-    // Build WITHOUT client to preserve original object refs
-    this.logger.log(`[SponsorTxKind] Building transaction...`);
-    const txBytes = await tx.build();
+    // Build WITH client to properly resolve transaction
+    this.logger.log(`[SponsorTxKind] Building transaction with client...`);
+    const txBytes = await tx.build({ client: this.client });
     const txBytesB64 = Buffer.from(txBytes).toString('base64');
     this.logger.log(`[SponsorTxKind] Built txBytes length: ${txBytes.length}`);
     this.logger.log(`[SponsorTxKind] Built txBytesB64 (first 100): ${txBytesB64.substring(0, 100)}...`);
