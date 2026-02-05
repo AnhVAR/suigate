@@ -1,19 +1,27 @@
 import { Controller, Get, Post, Body, UseGuards, Request } from '@nestjs/common';
+import { IsString } from 'class-validator';
 import { WalletService } from './wallet.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { WalletBalanceDto } from './dto/wallet-balance.dto';
 
 class SponsorTransactionDto {
+  @IsString()
   txBytesBase64: string;
 }
 
 class ExecuteSponsoredDto {
+  @IsString()
   txBytesBase64: string;
+
+  @IsString()
   userSignature: string;
+
+  @IsString()
   sponsorSignature: string;
 }
 
 class BuildSponsoredDepositDto {
+  @IsString()
   amountMist: string;
 }
 
