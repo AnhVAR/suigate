@@ -255,6 +255,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           isLoading: false,
         });
 
+        // Restore zkLogin session data
+        await get().restoreZkLoginSession();
+
         // TODO: Validate token with backend /users/me endpoint
       } else {
         set({ isAuthenticated: false, isLoading: false });
