@@ -179,6 +179,7 @@ const getApiUrl = (): string => {
   return process.env.EXPO_PUBLIC_API_URL || 'http://192.168.2.34:3000';
 };
 
+
 /** Get auth token from secure storage */
 const getAuthToken = async (): Promise<string | null> => {
   const { getAccessToken } = await import('../api/secure-token-storage');
@@ -348,9 +349,6 @@ export const buildDepositTransaction = async (
     throw new Error('No USDC coins found in wallet');
   }
 
-  // Get pool object info for explicit ref
-  const poolInfo = await getObjectRpc(poolObjectId);
-
   const txb = new Transaction();
   const amount = BigInt(amountMist);
 
@@ -369,12 +367,13 @@ export const buildDepositTransaction = async (
   // Split exact amount needed
   const [depositCoin] = txb.splitCoins(coinRefs[0], [amount]);
 
-  // Call deposit function on liquidity pool with explicit object ref
+  // Call deposit function on liquidity pool
+  // Pool is SHARED object - use object() not objectRef()
   txb.moveCall({
     target: `${packageId}::liquidity_pool::deposit`,
     typeArguments: [usdcType],
     arguments: [
-      txb.objectRef(poolInfo),
+      txb.object(poolObjectId),
       depositCoin,
     ],
   });
@@ -383,91 +382,27 @@ export const buildDepositTransaction = async (
 };
 
 /**
- * Build deposit transaction kind bytes (no gas data)
- * For sponsored transaction flow - app builds locally, backend sponsors
+ * Sponsor deposit via backend (backend builds tx with SuiClient)
+ * This is the production method that handles shared objects correctly
  */
-const buildDepositTransactionKind = async (
-  poolObjectId: string,
-  packageId: string,
-  usdcType: string,
-  amountMist: string,
-  senderAddress: string
-): Promise<string> => {
-  await loadSuiModules();
-
-  // Get USDC coins owned by sender via direct RPC (fresh refs)
-  const coins = await getCoinsRpc(senderAddress, usdcType);
-
-  if (!coins || coins.length === 0) {
-    throw new Error('No USDC coins found in wallet');
-  }
-
-  // Get pool object info for explicit ref
-  const poolInfo = await getObjectRpc(poolObjectId);
-
-  const txb = new Transaction();
-  const amount = BigInt(amountMist);
-
-  // Use explicit object refs for coins
-  const coinRefs = coins.map((c: any) =>
-    txb.objectRef({
-      objectId: c.coinObjectId,
-      version: c.version,
-      digest: c.digest,
-    })
-  );
-
-  if (coinRefs.length > 1) {
-    txb.mergeCoins(coinRefs[0], coinRefs.slice(1));
-  }
-
-  const [depositCoin] = txb.splitCoins(coinRefs[0], [amount]);
-
-  txb.moveCall({
-    target: `${packageId}::liquidity_pool::deposit`,
-    typeArguments: [usdcType],
-    arguments: [txb.objectRef(poolInfo), depositCoin],
-  });
-
-  // Build transaction kind only (no gas data) - Sui sponsored tx pattern
-  console.log('[BuildTxKind] Building with onlyTransactionKind: true');
-  const kindBytes = await txb.build({ onlyTransactionKind: true });
-
-  console.log('[BuildTxKind] kindBytes length:', kindBytes.length);
-  console.log('[BuildTxKind] kindBytes (first 20):', Array.from(kindBytes.slice(0, 20)));
-
-  const base64 = Buffer.from(kindBytes).toString('base64');
-  console.log('[BuildTxKind] base64 length:', base64.length);
-  console.log('[BuildTxKind] base64 (first 50):', base64.substring(0, 50));
-
-  return base64;
-};
-
-/**
- * Request transaction sponsorship from backend via Enoki SDK
- * Sends tx kind bytes, receives full tx bytes + digest for signing
- */
-const sponsorTransactionKindViaBackend = async (
-  txKindBase64: string
-): Promise<{
-  txBytesBase64: string;
-  digest: string;
-}> => {
+const sponsorDepositViaBackend = async (
+  amountMist: string
+): Promise<{ txBytesBase64: string; digest: string }> => {
   const token = await getAuthToken();
   if (!token) throw new Error('Not authenticated');
 
-  const response = await fetch(`${getApiUrl()}/wallet/sponsor-tx-kind`, {
+  const response = await fetch(`${getApiUrl()}/wallet/sponsor-deposit`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ txKindBase64 }),
+    body: JSON.stringify({ amountMist }),
   });
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.message || 'Failed to sponsor transaction');
+    throw new Error(error.message || 'Failed to sponsor deposit');
   }
 
   return response.json();
@@ -498,40 +433,14 @@ export const testZkLoginNonSponsored = async (
 ): Promise<{ digest: string; success: boolean }> => {
   await loadSuiModules();
 
-  console.log('[TestZkLogin] Starting non-sponsored test...');
-  console.log('[TestZkLogin] Address:', zkLoginData.suiAddress);
-
-  // Debug: Check epoch validity
+  // Validate epoch
   const currentEpoch = await getCurrentEpochRpc();
-  console.log('[TestZkLogin] Current epoch:', currentEpoch);
-  console.log('[TestZkLogin] maxEpoch from proof:', zkLoginData.maxEpoch);
-  console.log('[TestZkLogin] Epoch valid?', currentEpoch <= zkLoginData.maxEpoch);
-
   if (currentEpoch > zkLoginData.maxEpoch) {
     throw new Error(`Epoch expired! current=${currentEpoch} > maxEpoch=${zkLoginData.maxEpoch}. Please re-login.`);
   }
 
-  // Debug: Check ephemeral key
-  console.log('[TestZkLogin] secretKey type:', typeof zkLoginData.ephemeralKey.secretKey);
-  console.log('[TestZkLogin] secretKey (first 30):', String(zkLoginData.ephemeralKey.secretKey).substring(0, 30));
-  console.log('[TestZkLogin] publicKey stored:', zkLoginData.ephemeralKey.publicKey);
-  console.log('[TestZkLogin] nonce stored:', zkLoginData.ephemeralKey.nonce);
-  console.log('[TestZkLogin] randomness stored:', zkLoginData.ephemeralKey.randomness);
-
   const keypair = await reconstructKeypair(zkLoginData.ephemeralKey);
-
-  // Verify nonce can be regenerated
-  const { generateNonce } = await import('@mysten/sui/zklogin');
-  const regeneratedNonce = generateNonce(keypair.getPublicKey(), zkLoginData.maxEpoch, BigInt(zkLoginData.ephemeralKey.randomness));
-  console.log('[TestZkLogin] Nonce regenerated:', regeneratedNonce);
-  console.log('[TestZkLogin] Nonce MATCH?', regeneratedNonce === zkLoginData.ephemeralKey.nonce);
   const extPubKey = await getExtendedPubKey(keypair);
-  console.log('[TestZkLogin] Extended pubkey (now):', extPubKey);
-  console.log('[TestZkLogin] Extended pubkey (from login):', zkLoginData.extendedPubKey || 'NOT STORED - need fresh login');
-  console.log('[TestZkLogin] ExtPubKey MATCH?', extPubKey === zkLoginData.extendedPubKey);
-  console.log('[TestZkLogin] publicKey from reconstructed:', keypair.getPublicKey().toBase64());
-  console.log('[TestZkLogin] Proof addressSeed:', zkLoginData.addressSeed?.substring(0, 30) + '...');
-  console.log('[TestZkLogin] Proof proofPoints exist?', !!zkLoginData.proof?.proofPoints);
 
   if (zkLoginData.extendedPubKey && extPubKey !== zkLoginData.extendedPubKey) {
     throw new Error(`ExtPubKey MISMATCH! login=${zkLoginData.extendedPubKey} now=${extPubKey}`);
@@ -546,7 +455,6 @@ export const testZkLoginNonSponsored = async (
   // Get gas coins
   const gasCoins = await getSuiCoinsRpc(zkLoginData.suiAddress);
   if (!gasCoins.length) throw new Error('No SUI for gas');
-  console.log('[TestZkLogin] Gas coin:', gasCoins[0].coinObjectId);
 
   txb.setGasPrice(BigInt(await getReferenceGasPriceRpc()));
   txb.setGasBudget(10000000n);
@@ -556,36 +464,14 @@ export const testZkLoginNonSponsored = async (
     digest: gasCoins[0].digest,
   }]);
 
-  // Build tx bytes
   const txBytes = await txb.build();
-  console.log('[TestZkLogin] Tx built, txBytes length:', txBytes.length);
-
-  // Sign using keypair.sign() method like sample genAddressSeed pattern
   const { signature: userSignature } = await keypair.signTransaction(txBytes);
-  console.log('[TestZkLogin] userSignature scheme:', userSignature.substring(0, 2)); // Should start with 'A'
-  console.log('[TestZkLogin] userSignature (first 50):', userSignature.substring(0, 50));
-  console.log('[TestZkLogin] Stored addressSeed:', zkLoginData.addressSeed);
-
-  // Debug proof structure
-  console.log('[TestZkLogin] Proof structure:');
-  console.log('  - proofPoints.a:', zkLoginData.proof.proofPoints?.a?.length, 'elements');
-  console.log('  - proofPoints.b:', zkLoginData.proof.proofPoints?.b?.length, 'elements');
-  console.log('  - proofPoints.c:', zkLoginData.proof.proofPoints?.c?.length, 'elements');
-  console.log('  - issBase64Details.value (first 20):', zkLoginData.proof.issBase64Details?.value?.substring(0, 20));
-  console.log('  - issBase64Details.indexMod4:', zkLoginData.proof.issBase64Details?.indexMod4);
-  console.log('  - headerBase64 (first 20):', zkLoginData.proof.headerBase64?.substring(0, 20));
-  console.log('  - addressSeed:', zkLoginData.addressSeed);
-  console.log('  - salt:', zkLoginData.salt || 'NOT STORED');
-  console.log('  - maxEpoch:', zkLoginData.maxEpoch);
 
   const zkLoginSig = getZkLoginSignature({
     inputs: { ...zkLoginData.proof, addressSeed: zkLoginData.addressSeed },
     maxEpoch: zkLoginData.maxEpoch,
     userSignature,
   });
-  console.log('[TestZkLogin] zkLoginSig (first 100):', zkLoginSig.substring(0, 100));
-
-  console.log('[TestZkLogin] Executing via RPC...');
   const response = await fetch(TESTNET_RPC, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -597,15 +483,14 @@ export const testZkLoginNonSponsored = async (
   });
 
   const data = await response.json();
-  console.log('[TestZkLogin] Result:', data.result?.effects?.status || data.error);
-
   if (data.error) throw new Error(data.error.message);
   return { digest: data.result?.digest || '', success: data.result?.effects?.status?.status === 'success' };
 };
 
 /**
  * Execute Quick Sell deposit with zkLogin (sponsored by Enoki via backend)
- * Flow: App builds tx -> Backend sponsors via Enoki SDK -> App signs -> Backend executes via Enoki
+ * Backend builds tx with SuiClient (handles shared objects correctly)
+ * Flow: Backend builds+sponsors tx -> App signs with zkLogin -> Backend executes
  */
 export const executeQuickSellDeposit = async (
   depositPayload: {
@@ -621,35 +506,18 @@ export const executeQuickSellDeposit = async (
 
   // Validate zkLogin session
   const currentEpoch = await getCurrentEpochRpc();
-  console.log('[QuickSell] Epoch check:', currentEpoch, '/', zkLoginData.maxEpoch);
-  console.log('[QuickSell] User suiAddress:', zkLoginData.suiAddress);
-
   if (currentEpoch >= zkLoginData.maxEpoch) {
     throw new Error(
       `zkLogin session expired. Current epoch ${currentEpoch} >= max ${zkLoginData.maxEpoch}. Please re-login.`
     );
   }
 
-  // Step 1: Build deposit transaction kind locally (fresh coin refs)
-  console.log('[QuickSell] Building tx kind locally...');
-  const txKindBase64 = await buildDepositTransactionKind(
-    depositPayload.poolObjectId,
-    depositPayload.packageId,
-    depositPayload.usdcType,
-    depositPayload.amountMist,
-    zkLoginData.suiAddress
-  );
-  console.log('[QuickSell] txKindBase64 length:', txKindBase64.length);
+  // Backend builds tx with SuiClient (handles shared objects correctly)
+  const sponsored = await sponsorDepositViaBackend(depositPayload.amountMist);
+  const { txBytesBase64, digest } = sponsored;
 
-  // Step 2: Request Enoki sponsorship from backend
-  console.log('[QuickSell] Requesting Enoki sponsorship...');
-  const { txBytesBase64, digest } = await sponsorTransactionKindViaBackend(txKindBase64);
-  console.log('[QuickSell] Sponsored - digest:', digest);
-
-  // Step 3: Sign with zkLogin
-  console.log('[QuickSell] Signing with zkLogin...');
+  // Sign with zkLogin
   const txBytesArray = Uint8Array.from(Buffer.from(txBytesBase64, 'base64'));
-
   const keypair = await reconstructKeypair(zkLoginData.ephemeralKey);
   const { signature: userSignature } = await keypair.signTransaction(txBytesArray);
 
@@ -661,12 +529,7 @@ export const executeQuickSellDeposit = async (
     maxEpoch: zkLoginData.maxEpoch,
     userSignature,
   });
-  console.log('[QuickSell] zkLoginSig created');
 
-  // Step 4: Execute via Enoki (backend handles final submission)
-  console.log('[QuickSell] Executing via Enoki...');
-  const result = await executeEnokiSponsoredViaBackend(digest, zkLoginSig);
-  console.log('[QuickSell] Result:', result);
-
-  return result;
+  // Execute via Enoki backend
+  return executeEnokiSponsoredViaBackend(digest, zkLoginSig);
 };

@@ -246,44 +246,79 @@ export class SuiTransactionService implements OnModuleInit {
   }
 
   /**
-   * Sponsor transaction via Enoki SDK
-   * User builds tx locally with onlyTransactionKind: true, sends kind bytes here
-   * Returns tx bytes and digest for user to sign
-   * @throws ServiceUnavailableException if Enoki API is unavailable
+   * Build and sponsor deposit transaction via Enoki SDK
+   * Backend builds tx with SuiClient (handles shared objects correctly)
+   * @param senderAddress User's wallet address
+   * @param amountMist Amount in USDC mist (6 decimals)
+   * @returns tx bytes and digest for user to sign
    */
-  async sponsorTransactionKind(
-    txKindBase64: string,
+  async sponsorDepositTransaction(
     senderAddress: string,
+    amountMist: string,
   ): Promise<{
     txBytesBase64: string;
     digest: string;
   }> {
-    this.logger.log(`[EnokiSponsor] Requesting sponsorship for ${senderAddress}`);
-
     if (!this.enokiClient) {
       throw new ServiceUnavailableException('EnokiClient not initialized - check ENOKI_PRIVATE_KEY');
     }
 
     try {
-      this.logger.log(`[EnokiSponsor] txKindBase64 length: ${txKindBase64.length}`);
-      this.logger.log(`[EnokiSponsor] txKindBase64 (first 100): ${txKindBase64.substring(0, 100)}`);
+      const { Transaction } = await import('@mysten/sui/transactions');
 
-      // Enoki SDK createSponsoredTransaction (no allowedMoveCallTargets for debugging)
+      // Get user's USDC coins
+      const coins = await this.client.getCoins({
+        owner: senderAddress,
+        coinType: this.usdcType,
+      });
+
+      if (!coins.data?.length) {
+        throw new Error('No USDC coins found in wallet');
+      }
+
+      // Build transaction
+      const tx = new Transaction();
+      const amount = BigInt(amountMist);
+
+      // Use object refs for coins (owned objects)
+      const coinRefs = coins.data.map((c: any) =>
+        tx.objectRef({
+          objectId: c.coinObjectId,
+          version: c.version,
+          digest: c.digest,
+        }),
+      );
+
+      if (coinRefs.length > 1) {
+        tx.mergeCoins(coinRefs[0], coinRefs.slice(1));
+      }
+
+      const [depositCoin] = tx.splitCoins(coinRefs[0], [amount]);
+
+      // Pool is SHARED object - use object() not objectRef()
+      tx.moveCall({
+        target: `${this.packageId}::liquidity_pool::deposit`,
+        typeArguments: [this.usdcType],
+        arguments: [tx.object(this.poolId), depositCoin],
+      });
+
+      // Build with client for proper resolution
+      const kindBytes = await tx.build({ client: this.client, onlyTransactionKind: true });
+      const txKindBase64 = Buffer.from(kindBytes).toString('base64');
+
+      // Sponsor via Enoki
       const result = await this.enokiClient.createSponsoredTransaction({
         network: 'testnet',
         transactionKindBytes: txKindBase64,
         sender: senderAddress,
+        allowedMoveCallTargets: [`${this.packageId}::liquidity_pool::deposit`],
       });
-
-      this.logger.log(`[EnokiSponsor] Success - digest: ${result.digest}`);
-
       return {
         txBytesBase64: result.bytes,
         digest: result.digest,
       };
     } catch (error: any) {
-      this.logger.error(`[EnokiSponsor] Failed: ${error.message}`);
-      this.logger.error(`[EnokiSponsor] Error details: ${JSON.stringify(error.response?.data || error.cause || {})}`);
+      this.logger.error(`Enoki sponsor failed: ${error.message}`);
       throw new ServiceUnavailableException(`Enoki sponsor error: ${error.message}`);
     }
   }
@@ -296,7 +331,6 @@ export class SuiTransactionService implements OnModuleInit {
     digest: string,
     userSignature: string,
   ): Promise<{ digest: string; success: boolean }> {
-    this.logger.log(`[EnokiExecute] Executing digest: ${digest}`);
 
     if (!this.enokiClient) {
       throw new ServiceUnavailableException('EnokiClient not initialized - check ENOKI_PRIVATE_KEY');
@@ -307,11 +341,9 @@ export class SuiTransactionService implements OnModuleInit {
         digest,
         signature: userSignature,
       });
-
-      this.logger.log(`[EnokiExecute] Success - digest: ${result.digest}`);
       return { digest: result.digest, success: true };
     } catch (error) {
-      this.logger.error(`[EnokiExecute] Failed: ${error.message}`);
+      this.logger.error(`Enoki execute failed: ${error.message}`);
       throw new ServiceUnavailableException(`Enoki execute error: ${error.message}`);
     }
   }

@@ -4,9 +4,9 @@ import { WalletService } from './wallet.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { WalletBalanceDto } from './dto/wallet-balance.dto';
 
-class SponsorTxKindDto {
+class SponsorDepositDto {
   @IsString()
-  txKindBase64: string;
+  amountMist: string;
 }
 
 class ExecuteEnokiSponsoredDto {
@@ -28,20 +28,20 @@ export class WalletController {
   }
 
   /**
-   * Sponsor transaction kind via Enoki SDK
-   * Returns tx bytes and digest for user to sign
+   * Sponsor deposit transaction - backend builds tx with SuiClient
+   * Returns tx bytes and digest for user to sign with zkLogin
    */
-  @Post('sponsor-tx-kind')
-  async sponsorTransactionKind(
+  @Post('sponsor-deposit')
+  async sponsorDeposit(
     @Request() req,
-    @Body() dto: SponsorTxKindDto,
+    @Body() dto: SponsorDepositDto,
   ): Promise<{
     txBytesBase64: string;
     digest: string;
   }> {
-    return this.walletService.sponsorTransactionKind(
-      dto.txKindBase64,
+    return this.walletService.sponsorDeposit(
       req.user.suiAddress,
+      dto.amountMist,
     );
   }
 

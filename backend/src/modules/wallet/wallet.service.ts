@@ -31,19 +31,19 @@ export class WalletService {
   }
 
   /**
-   * Sponsor transaction kind via Enoki SDK
-   * Returns tx bytes and digest for user to sign
+   * Sponsor deposit transaction - backend builds tx with SuiClient
+   * Returns tx bytes and digest for user to sign with zkLogin
    */
-  async sponsorTransactionKind(
-    txKindBase64: string,
+  async sponsorDeposit(
     senderAddress: string,
+    amountMist: string,
   ): Promise<{
     txBytesBase64: string;
     digest: string;
   }> {
-    return this.suiTransaction.sponsorTransactionKind(
-      txKindBase64,
+    return this.suiTransaction.sponsorDepositTransaction(
       senderAddress,
+      amountMist,
     );
   }
 
