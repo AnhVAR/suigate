@@ -21,6 +21,11 @@ import {
   OrderDto,
   OrderListResponseDto,
 } from './dto/order-types.dto';
+import {
+  CancelPayloadDto,
+  CancelOrderDto,
+  CancelOrderResponseDto,
+} from './dto/order-matching.dto';
 
 @Controller('orders')
 @UseGuards(JwtAuthGuard)
@@ -83,11 +88,29 @@ export class OrdersController {
     );
   }
 
-  @Delete(':id')
+  @Get(':id/cancel-payload')
+  async getCancelPayload(
+    @Request() req,
+    @Param('id') id: string,
+  ): Promise<CancelPayloadDto> {
+    return this.ordersService.getCancelPayload(req.user.id, id);
+  }
+
+  @Post(':id/cancel')
   async cancelOrder(
     @Request() req,
     @Param('id') id: string,
-  ): Promise<OrderDto> {
+    @Body() dto: CancelOrderDto,
+  ): Promise<CancelOrderResponseDto> {
+    return this.ordersService.cancelOrder(req.user.id, id, dto);
+  }
+
+  @Delete(':id')
+  async deleteOrder(
+    @Request() req,
+    @Param('id') id: string,
+  ): Promise<CancelOrderResponseDto> {
+    // Legacy endpoint - redirect to cancelOrder without txHash (only works for pending orders)
     return this.ordersService.cancelOrder(req.user.id, id);
   }
 }

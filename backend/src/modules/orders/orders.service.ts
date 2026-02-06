@@ -19,6 +19,12 @@ import {
   OrderDto,
   OrderListResponseDto,
 } from './dto/order-types.dto';
+import {
+  CancelPayloadDto,
+  CancelOrderDto,
+  CancelOrderResponseDto,
+} from './dto/order-matching.dto';
+import { OrderMatchingEngineService } from './order-matching-engine.service';
 
 const ORDER_EXPIRY_MINUTES = 15;
 
@@ -31,6 +37,7 @@ export class OrdersService {
     private suiClient: SuiClientService,
     private ratesService: RatesService,
     private vietQrService: VietQrService,
+    private matchingEngine: OrderMatchingEngineService,
   ) {}
 
   async createBuyOrder(
@@ -225,11 +232,23 @@ export class OrdersService {
       tx_status: 'confirmed',
     });
 
+    // Build update payload - for smart_sell, initialize fill tracking
+    const updatePayload: any = {
+      status: 'processing',
+      updated_at: new Date().toISOString(),
+    };
+
+    // Smart sell orders: initialize remaining_usdc for matching
+    if (order.orderType === 'smart_sell' && order.amountUsdc) {
+      updatePayload.remaining_usdc = parseFloat(order.amountUsdc);
+      updatePayload.filled_usdc = 0;
+    }
+
     // Update order status
     const { data, error } = await this.supabase
       .getClient()
       .from('orders')
-      .update({ status: 'processing', updated_at: new Date().toISOString() })
+      .update(updatePayload)
       .eq('id', orderId)
       .select()
       .single();
@@ -239,28 +258,108 @@ export class OrdersService {
     return this.mapOrderToDto(data);
   }
 
-  async cancelOrder(userId: string, orderId: string): Promise<OrderDto> {
+  /**
+   * Get cancel payload for smart sell order.
+   * Returns info needed to build cancel transaction (or null txPayload if fully filled).
+   */
+  async getCancelPayload(
+    userId: string,
+    orderId: string,
+  ): Promise<CancelPayloadDto> {
     const order = await this.getOrderById(userId, orderId);
 
     if (order.orderType !== 'smart_sell') {
       throw new BadRequestException('Only smart sell orders can be cancelled');
     }
 
-    if (order.status !== 'pending') {
+    if (!['pending', 'processing'].includes(order.status)) {
       throw new BadRequestException('Order cannot be cancelled');
     }
 
-    const { data, error } = await this.supabase
+    const remainingUsdc = await this.matchingEngine.getOrderRemaining(orderId);
+    const filledUsdc = order.amountUsdc
+      ? parseFloat(order.amountUsdc) - remainingUsdc
+      : 0;
+    const pendingVnd = await this.matchingEngine.getPendingVnd(orderId);
+
+    return {
+      orderId,
+      escrowObjectId: order.escrowObjectId || undefined,
+      remainingUsdc,
+      filledUsdc,
+      pendingVnd,
+      packageId: remainingUsdc > 0 ? this.suiClient.getPackageId() : undefined,
+      // txPayload is null if fully filled (DB-only cancel)
+      txPayload: remainingUsdc > 0 && order.escrowObjectId ? 'SIGN_REQUIRED' : undefined,
+    };
+  }
+
+  /**
+   * Cancel smart sell order.
+   * If order has remaining USDC, requires txHash from on-chain cancel.
+   */
+  async cancelOrder(
+    userId: string,
+    orderId: string,
+    dto?: CancelOrderDto,
+  ): Promise<CancelOrderResponseDto> {
+    const order = await this.getOrderById(userId, orderId);
+
+    if (order.orderType !== 'smart_sell') {
+      throw new BadRequestException('Only smart sell orders can be cancelled');
+    }
+
+    if (!['pending', 'processing'].includes(order.status)) {
+      throw new BadRequestException('Order cannot be cancelled');
+    }
+
+    const remainingUsdc = await this.matchingEngine.getOrderRemaining(orderId);
+    const filledUsdc = order.amountUsdc
+      ? parseFloat(order.amountUsdc) - remainingUsdc
+      : 0;
+
+    // If has remaining USDC and escrow exists, verify on-chain cancel tx
+    if (remainingUsdc > 0 && order.escrowObjectId) {
+      if (!dto?.txHash) {
+        throw new BadRequestException(
+          'Transaction hash required for cancel with remaining balance',
+        );
+      }
+
+      const isConfirmed = await this.suiClient.verifyTransaction(dto.txHash);
+      if (!isConfirmed) {
+        throw new BadRequestException('Cancel transaction not confirmed');
+      }
+
+      // Record cancel transaction
+      await this.supabase.getClient().from('transactions').insert({
+        order_id: orderId,
+        tx_hash: dto.txHash,
+        tx_status: 'confirmed',
+      });
+    }
+
+    // Update order status to cancelled
+    const { error } = await this.supabase
       .getClient()
       .from('orders')
-      .update({ status: 'cancelled', updated_at: new Date().toISOString() })
-      .eq('id', orderId)
-      .select()
-      .single();
+      .update({
+        status: 'cancelled',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', orderId);
 
     if (error) throw new Error('Failed to cancel order');
 
-    return this.mapOrderToDto(data);
+    const pendingVnd = await this.matchingEngine.getPendingVnd(orderId);
+
+    return {
+      orderId,
+      status: 'cancelled',
+      filledUsdc,
+      refundedUsdc: remainingUsdc,
+      pendingVnd,
+    };
   }
 
   /** Store escrow object ID after mobile app creates on-chain escrow */

@@ -91,3 +91,44 @@ export interface OrderListResponseDto {
   orders: OrderDto[];
   total: number;
 }
+
+/** Cancel payload returned to frontend for user signing */
+export interface CancelPayloadDto {
+  orderId: string;
+  escrowObjectId?: string;
+  remainingUsdc: number;
+  filledUsdc: number;
+  pendingVnd: number;
+  packageId?: string;
+  txPayload?: string; // null if fully filled (DB-only cancel)
+}
+
+/** Cancel order request */
+export interface CancelOrderDto {
+  txHash?: string; // Required if remainingUsdc > 0
+}
+
+/** Cancel order response */
+export interface CancelOrderResponseDto {
+  orderId: string;
+  status: string;
+  filledUsdc: number;
+  refundedUsdc: number;
+  pendingVnd: number;
+}
+
+/** Fill history item for display */
+export interface FillHistoryItem {
+  amountUsdc: number;
+  rate: number;
+  amountVnd: number;
+  vndSettled: boolean;
+  matchedAt: string;
+}
+
+/** Smart sell order with fill tracking (extended OrderDto) */
+export interface SmartSellOrderDto extends OrderDto {
+  filledUsdc: number;
+  remainingUsdc: number;
+  fillHistory: FillHistoryItem[];
+}

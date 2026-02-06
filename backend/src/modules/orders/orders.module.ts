@@ -5,6 +5,7 @@ import { VietQrService } from './vietqr-generator.service';
 import { SmartSellExecutorService } from './smart-sell-executor.service';
 import { OrderExpiryHandlerService } from './order-expiry-handler.service';
 import { QuickSellDepositCheckerService } from './quick-sell-deposit-checker.service';
+import { OrderMatchingEngineService } from './order-matching-engine.service';
 import { RatesModule } from '../rates/rates.module';
 
 @Module({
@@ -16,7 +17,8 @@ import { RatesModule } from '../rates/rates.module';
     SmartSellExecutorService,
     OrderExpiryHandlerService,
     QuickSellDepositCheckerService,
+    OrderMatchingEngineService,
   ],
-  exports: [OrdersService],
+  exports: [OrdersService, OrderMatchingEngineService],
 })
 export class OrdersModule {}

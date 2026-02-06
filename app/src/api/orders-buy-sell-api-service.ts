@@ -14,6 +14,9 @@ import type {
   ConfirmOrderDto,
   OrderDto,
   OrderListResponseDto,
+  CancelPayloadDto,
+  CancelOrderDto,
+  CancelOrderResponseDto,
 } from '@suigate/shared-types';
 
 export const ordersBuySellApiService = {
@@ -71,9 +74,16 @@ export const ordersBuySellApiService = {
   },
 
   /**
-   * Cancel smart sell order
+   * Get cancel payload for smart sell order (includes remaining/filled amounts)
    */
-  cancelOrder: async (orderId: string): Promise<void> => {
-    return apiClient.delete<void>(`/orders/${orderId}`);
+  getCancelPayload: async (orderId: string): Promise<CancelPayloadDto> => {
+    return apiClient.get<CancelPayloadDto>(`/orders/${orderId}/cancel-payload`);
+  },
+
+  /**
+   * Cancel smart sell order with optional tx hash for on-chain refund
+   */
+  cancelOrder: async (orderId: string, dto?: CancelOrderDto): Promise<CancelOrderResponseDto> => {
+    return apiClient.post<CancelOrderResponseDto>(`/orders/${orderId}/cancel`, dto || {});
   },
 };

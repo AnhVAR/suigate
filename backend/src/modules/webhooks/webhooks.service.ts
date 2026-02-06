@@ -2,6 +2,7 @@ import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SupabaseService } from '../../common/supabase/supabase.service';
 import { SuiTransactionService } from '../../common/sui/sui-transaction.service';
+import { OrderMatchingEngineService } from '../orders/order-matching-engine.service';
 import {
   SepayWebhookDto,
   SepayWebhookResponse,
@@ -17,6 +18,7 @@ export class WebhooksService {
     private config: ConfigService,
     private supabase: SupabaseService,
     private suiTx: SuiTransactionService,
+    private matchingEngine: OrderMatchingEngineService,
   ) {
     this.webhookSecret =
       this.config.get<string>('sepay.webhookSecret') || 'mock-secret';
@@ -192,7 +194,10 @@ export class WebhooksService {
     return this.handleSepayWebhook(simulatedPayload, '');
   }
 
-  /** Dispense USDC to user after VND payment confirmed */
+  /**
+   * Dispense USDC to user after VND payment confirmed.
+   * Uses order matching engine: fills from smart sells first, then pool.
+   */
   private async dispenseUsdcToUser(order: any): Promise<void> {
     try {
       // Get user's Sui address
@@ -207,18 +212,71 @@ export class WebhooksService {
         throw new Error('User has no Sui address');
       }
 
-      // Dispense USDC via smart contract
-      const txDigest = await this.suiTx.dispenseUsdc(
-        order.amount_usdc,
-        user.sui_address,
+      const amountUsdc = Number(order.amount_usdc);
+
+      // Calculate match against smart sell order book
+      const matchResult = await this.matchingEngine.calculateMatch(amountUsdc);
+
+      this.logger.log(
+        `Match result for ${amountUsdc} USDC: ${matchResult.smartSellFills.length} smart sells, ${matchResult.poolFill} from pool`,
       );
 
-      // Record transaction
-      await this.supabase.getClient().from('transactions').insert({
-        order_id: order.id,
-        tx_hash: txDigest,
-        tx_status: 'confirmed',
-      });
+      // Execute partial fills from smart sells
+      for (const fill of matchResult.smartSellFills) {
+        const fillAmountMist = Math.round(fill.fillAmount * 1_000_000);
+
+        try {
+          const txDigest = await this.suiTx.partialFill(
+            fill.escrowObjectId,
+            fillAmountMist,
+            user.sui_address,
+          );
+
+          // Record match in order_matches table
+          await this.matchingEngine.recordMatchFill(order.id, fill, txDigest);
+
+          // Record transaction
+          await this.supabase.getClient().from('transactions').insert({
+            order_id: order.id,
+            tx_hash: txDigest,
+            tx_status: 'confirmed',
+          });
+
+          this.logger.log(
+            `Partial fill: ${fill.fillAmount} USDC from escrow ${fill.escrowObjectId} (tx: ${txDigest})`,
+          );
+        } catch (fillError) {
+          this.logger.error(
+            `Failed partial_fill for escrow ${fill.escrowObjectId}`,
+            fillError,
+          );
+          // Mark for manual review but continue with pool fill
+          await this.supabase
+            .getClient()
+            .from('orders')
+            .update({ needs_manual_review: true })
+            .eq('id', order.id);
+        }
+      }
+
+      // Dispense remainder from pool
+      if (matchResult.poolFill > 0) {
+        const txDigest = await this.suiTx.dispenseUsdc(
+          matchResult.poolFill,
+          user.sui_address,
+        );
+
+        // Record transaction
+        await this.supabase.getClient().from('transactions').insert({
+          order_id: order.id,
+          tx_hash: txDigest,
+          tx_status: 'confirmed',
+        });
+
+        this.logger.log(
+          `Pool dispense: ${matchResult.poolFill} USDC to ${user.sui_address} (tx: ${txDigest})`,
+        );
+      }
 
       // Update order status to settled
       await this.supabase
@@ -228,7 +286,7 @@ export class WebhooksService {
         .eq('id', order.id);
 
       this.logger.log(
-        `Dispensed ${order.amount_usdc} USDC to ${user.sui_address} (tx: ${txDigest})`,
+        `Order ${order.id} settled: ${matchResult.matchedUsdc} from smart sells, ${matchResult.poolFill} from pool`,
       );
     } catch (error) {
       this.logger.error(`Failed to dispense USDC for order ${order.id}`, error);

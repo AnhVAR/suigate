@@ -30,6 +30,8 @@ export { FeeComparisonCard } from './trading/fee-comparison-card';
 export { TransactionFilterTabs } from './history/transaction-filter-tabs';
 export { TransactionListItem } from './history/transaction-list-item';
 export { SmartSellProgress } from './history/smart-sell-progress';
+export { SmartSellProgressCard } from './history/smart-sell-progress-card';
+export { SmartSellCancelModal } from './history/smart-sell-cancel-confirmation-modal';
 
 // Settings
 export { SettingsSection, SettingsItem } from './settings/settings-section';

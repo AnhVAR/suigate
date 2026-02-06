@@ -182,6 +182,38 @@ export class SuiTransactionService implements OnModuleInit {
   }
 
   /**
+   * Partial fill of escrow - dispense portion of locked USDC to buyer
+   * Used by order matching engine for smart sell → buy order fills
+   * @param escrowId Escrow object ID
+   * @param fillAmountMist Amount to fill in USDC mist (6 decimals)
+   * @param recipientAddress Buyer's wallet address
+   * @returns Transaction digest
+   */
+  async partialFill(
+    escrowId: string,
+    fillAmountMist: number,
+    recipientAddress: string,
+  ): Promise<string> {
+    const { Transaction } = await import('@mysten/sui/transactions');
+
+    const tx = new Transaction();
+    tx.moveCall({
+      target: `${this.packageId}::escrow::partial_fill`,
+      arguments: [
+        tx.object(this.adminCapId),
+        tx.object(escrowId),
+        tx.pure.u64(fillAmountMist),
+        tx.object(this.oracleId),
+        tx.object('0x6'), // Clock
+        tx.pure.address(recipientAddress),
+      ],
+      typeArguments: [this.usdcType],
+    });
+
+    return this.signAndExecute(tx);
+  }
+
+  /**
    * Retry wrapper with exponential backoff
    * @param operation RPC operation to execute
    * @param operationName Name for logging
