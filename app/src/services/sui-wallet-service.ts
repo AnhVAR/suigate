@@ -430,13 +430,7 @@ const buildDepositTransactionKind = async (
   });
 
   // Build transaction kind only (no gas data) - Sui sponsored tx pattern
-  // Must provide client for proper serialization (Enoki requirement)
-  const { SuiHTTPTransport, SuiClient } = await import('@mysten/sui/client') as any;
-  const client = new SuiClient({
-    transport: new SuiHTTPTransport({ url: TESTNET_RPC }),
-  });
-
-  const kindBytes = await txb.build({ client, onlyTransactionKind: true });
+  const kindBytes = await txb.build({ onlyTransactionKind: true });
 
   return Buffer.from(kindBytes).toString('base64');
 };
