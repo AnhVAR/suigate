@@ -470,3 +470,86 @@ export const executeQuickSellDeposit = async (
   // Execute via Enoki backend
   return executeEnokiSponsoredViaBackend(digest, zkLoginSig);
 };
+
+/**
+ * Sponsor escrow via backend (backend builds tx with SuiClient)
+ * This is the production method that handles shared objects correctly
+ */
+const sponsorEscrowViaBackend = async (
+  amountMist: string,
+  targetRate: number,
+  bankAccountId: number
+): Promise<{ txBytesBase64: string; digest: string }> => {
+  const token = await getAuthToken();
+  if (!token) throw new Error('Not authenticated');
+
+  const response = await fetch(`${getApiUrl()}/wallet/sponsor-escrow`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ amountMist, targetRate, bankAccountId }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.message || 'Failed to sponsor escrow');
+  }
+
+  return response.json();
+};
+
+/**
+ * Execute Smart Sell escrow creation with zkLogin (sponsored by Enoki via backend)
+ * Backend builds tx with SuiClient (handles shared objects correctly)
+ * Flow: Backend builds+sponsors tx -> App signs with zkLogin -> Backend executes
+ */
+export const executeSmartSellEscrow = async (
+  escrowPayload: {
+    amountMist: string;
+    targetRate: number;
+    bankAccountId: number;
+    orderId: string;
+  },
+  zkLoginData: ZkLoginData
+): Promise<{ digest: string; success: boolean; escrowObjectId?: string }> => {
+  await loadSuiModules();
+
+  // Validate zkLogin session
+  const currentEpoch = await getCurrentEpochRpc();
+  if (currentEpoch >= zkLoginData.maxEpoch) {
+    throw new Error(
+      `zkLogin session expired. Current epoch ${currentEpoch} >= max ${zkLoginData.maxEpoch}. Please re-login.`
+    );
+  }
+
+  // Backend builds tx with SuiClient (handles shared objects correctly)
+  const sponsored = await sponsorEscrowViaBackend(
+    escrowPayload.amountMist,
+    escrowPayload.targetRate,
+    escrowPayload.bankAccountId
+  );
+  const { txBytesBase64, digest } = sponsored;
+
+  // Sign with zkLogin
+  const txBytesArray = Uint8Array.from(Buffer.from(txBytesBase64, 'base64'));
+  const keypair = await reconstructKeypair(zkLoginData.ephemeralKey);
+  const { signature: userSignature } = await keypair.signTransaction(txBytesArray);
+
+  const zkLoginSig = getZkLoginSignature({
+    inputs: {
+      ...zkLoginData.proof,
+      addressSeed: zkLoginData.addressSeed,
+    },
+    maxEpoch: zkLoginData.maxEpoch,
+    userSignature,
+  });
+
+  // Execute via Enoki backend
+  const result = await executeEnokiSponsoredViaBackend(digest, zkLoginSig);
+
+  // TODO: Extract escrowObjectId from transaction effects
+  // For now, return result without escrowObjectId
+  return result;
+};

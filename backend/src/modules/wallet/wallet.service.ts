@@ -48,6 +48,27 @@ export class WalletService {
   }
 
   /**
+   * Sponsor escrow creation transaction - backend builds tx with SuiClient
+   * Returns tx bytes and digest for user to sign with zkLogin
+   */
+  async sponsorEscrow(
+    senderAddress: string,
+    amountMist: string,
+    targetRate: number,
+    bankAccountId: number,
+  ): Promise<{
+    txBytesBase64: string;
+    digest: string;
+  }> {
+    return this.suiTransaction.sponsorEscrowTransaction(
+      senderAddress,
+      amountMist,
+      targetRate,
+      bankAccountId,
+    );
+  }
+
+  /**
    * Execute Enoki-sponsored transaction after user signs
    */
   async executeEnokiSponsored(

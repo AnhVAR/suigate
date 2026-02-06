@@ -194,6 +194,9 @@ export class OrdersService {
       throw new Error('Failed to create order');
     }
 
+    // Prepare escrow payload for frontend
+    const amountMist = Math.floor(amountUsdc * 1_000_000).toString();
+
     return {
       orderId: data.id,
       amountUsdc: dto.amountUsdc,
@@ -204,6 +207,12 @@ export class OrdersService {
         quickSellVnd: Math.round(quickSellVnd),
         smartSellVnd: Math.round(smartSellVnd - fee * dto.targetRate),
         savings: Math.round(smartSellVnd - quickSellVnd),
+      },
+      escrowPayload: {
+        orderId: data.id,
+        amountMist,
+        targetRate: dto.targetRate,
+        bankAccountId: dto.bankAccountId,
       },
     };
   }

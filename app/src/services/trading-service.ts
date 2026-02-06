@@ -30,6 +30,13 @@ export interface DepositPayload {
   amountMist: string;
 }
 
+export interface EscrowPayload {
+  orderId: string;
+  amountMist: string;
+  targetRate: number;
+  bankAccountId: number;
+}
+
 export interface CreateSellOrderResult {
   orderId: string;
   amountUsdc: number;
@@ -37,6 +44,7 @@ export interface CreateSellOrderResult {
   rate: number;
   fee: number;
   depositPayload?: DepositPayload;
+  escrowPayload?: EscrowPayload;
 }
 
 export interface SmartSellComparison {
@@ -162,6 +170,7 @@ export const createSmartSellOrder = async (
     rate: response.targetRate,
     fee: parseFloat(response.fee),
     comparison: response.comparison,
+    escrowPayload: response.escrowPayload,
   };
 };
 

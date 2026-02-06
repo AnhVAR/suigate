@@ -59,6 +59,13 @@ export interface SmartSellOrderResponseDto {
     smartSellVnd: number;
     savings: number;
   };
+  /** Transaction payload for user to create escrow */
+  escrowPayload: {
+    orderId: string;
+    amountMist: string;
+    targetRate: number;
+    bankAccountId: number;
+  };
 }
 
 /** Confirm order with blockchain tx */

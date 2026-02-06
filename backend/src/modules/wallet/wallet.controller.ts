@@ -1,5 +1,5 @@
 import { Controller, Get, Post, Body, UseGuards, Request } from '@nestjs/common';
-import { IsString } from 'class-validator';
+import { IsString, IsNumber } from 'class-validator';
 import { WalletService } from './wallet.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { WalletBalanceDto } from './dto/wallet-balance.dto';
@@ -7,6 +7,17 @@ import { WalletBalanceDto } from './dto/wallet-balance.dto';
 class SponsorDepositDto {
   @IsString()
   amountMist: string;
+}
+
+class SponsorEscrowDto {
+  @IsString()
+  amountMist: string;
+
+  @IsNumber()
+  targetRate: number;
+
+  @IsNumber()
+  bankAccountId: number;
 }
 
 class ExecuteEnokiSponsoredDto {
@@ -42,6 +53,26 @@ export class WalletController {
     return this.walletService.sponsorDeposit(
       req.user.suiAddress,
       dto.amountMist,
+    );
+  }
+
+  /**
+   * Sponsor escrow creation transaction - backend builds tx with SuiClient
+   * Returns tx bytes and digest for user to sign with zkLogin
+   */
+  @Post('sponsor-escrow')
+  async sponsorEscrow(
+    @Request() req,
+    @Body() dto: SponsorEscrowDto,
+  ): Promise<{
+    txBytesBase64: string;
+    digest: string;
+  }> {
+    return this.walletService.sponsorEscrow(
+      req.user.suiAddress,
+      dto.amountMist,
+      dto.targetRate,
+      dto.bankAccountId,
     );
   }
 

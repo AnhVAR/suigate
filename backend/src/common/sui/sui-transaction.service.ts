@@ -356,6 +356,93 @@ export class SuiTransactionService implements OnModuleInit {
   }
 
   /**
+   * Build and sponsor escrow creation transaction via Enoki SDK
+   * Backend builds tx with SuiClient (handles shared objects correctly)
+   * @param senderAddress User's wallet address
+   * @param amountMist Amount in USDC mist (6 decimals)
+   * @param targetRate Target VND/USDC rate (u64)
+   * @param bankAccountId Bank account ID for VND disbursement (u64)
+   * @returns tx bytes and digest for user to sign
+   */
+  async sponsorEscrowTransaction(
+    senderAddress: string,
+    amountMist: string,
+    targetRate: number,
+    bankAccountId: number,
+  ): Promise<{
+    txBytesBase64: string;
+    digest: string;
+  }> {
+    if (!this.enokiClient) {
+      throw new ServiceUnavailableException('EnokiClient not initialized - check ENOKI_PRIVATE_KEY');
+    }
+
+    try {
+      const { Transaction } = await import('@mysten/sui/transactions');
+
+      // Get user's USDC coins
+      const coins = await this.client.getCoins({
+        owner: senderAddress,
+        coinType: this.usdcType,
+      });
+
+      if (!coins.data?.length) {
+        throw new Error('No USDC coins found in wallet');
+      }
+
+      // Build transaction
+      const tx = new Transaction();
+      const amount = BigInt(amountMist);
+
+      // Use object refs for coins (owned objects)
+      const coinRefs = coins.data.map((c: any) =>
+        tx.objectRef({
+          objectId: c.coinObjectId,
+          version: c.version,
+          digest: c.digest,
+        }),
+      );
+
+      if (coinRefs.length > 1) {
+        tx.mergeCoins(coinRefs[0], coinRefs.slice(1));
+      }
+
+      const [escrowCoin] = tx.splitCoins(coinRefs[0], [amount]);
+
+      // Call escrow::create_and_transfer
+      tx.moveCall({
+        target: `${this.packageId}::escrow::create_and_transfer`,
+        typeArguments: [this.usdcType],
+        arguments: [
+          escrowCoin,
+          tx.pure.u64(targetRate),
+          tx.pure.u64(bankAccountId),
+          tx.object('0x6'), // Clock
+        ],
+      });
+
+      // Build with client for proper resolution
+      const kindBytes = await tx.build({ client: this.client, onlyTransactionKind: true });
+      const txKindBase64 = Buffer.from(kindBytes).toString('base64');
+
+      // Sponsor via Enoki
+      const result = await this.enokiClient.createSponsoredTransaction({
+        network: 'testnet',
+        transactionKindBytes: txKindBase64,
+        sender: senderAddress,
+        allowedMoveCallTargets: [`${this.packageId}::escrow::create_and_transfer`],
+      });
+      return {
+        txBytesBase64: result.bytes,
+        digest: result.digest,
+      };
+    } catch (error: any) {
+      this.logger.error(`Enoki sponsor escrow failed: ${error.message}`);
+      throw new ServiceUnavailableException(`Enoki sponsor escrow error: ${error.message}`);
+    }
+  }
+
+  /**
    * Execute sponsored tx via Enoki SDK after user signs
    * @throws ServiceUnavailableException if Enoki API is unavailable
    */

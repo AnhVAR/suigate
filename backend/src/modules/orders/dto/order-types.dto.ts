@@ -67,6 +67,12 @@ export class SmartSellOrderResponseDto {
     smartSellVnd: number;
     savings: number;
   };
+  escrowPayload: {
+    orderId: string;
+    amountMist: string;
+    targetRate: number;
+    bankAccountId: number;
+  };
 }
 
 // Order Confirmation
