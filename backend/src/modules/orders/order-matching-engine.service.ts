@@ -80,6 +80,7 @@ export class OrderMatchingEngineService {
   ): Promise<any[]> {
     // Use Supabase query - FOR UPDATE lock not available via JS client
     // Race conditions handled at executeMatch level with optimistic locking
+    // Only match orders that have escrow_object_id set (on-chain escrow exists)
     const { data, error } = await this.supabase
       .getClient()
       .from('orders')
@@ -87,6 +88,7 @@ export class OrderMatchingEngineService {
       .eq('order_type', 'smart_sell')
       .eq('status', 'processing')
       .gt('remaining_usdc', 0)
+      .not('escrow_object_id', 'is', null)
       .lte('target_rate', currentRate)
       .order('target_rate', { ascending: true })
       .order('created_at', { ascending: true })
@@ -97,9 +99,26 @@ export class OrderMatchingEngineService {
       return [];
     }
 
-    this.logger.log(
-      `Found ${data?.length || 0} eligible smart sells for rate ${currentRate}`,
-    );
+    // Debug: also log total processing smart sells for visibility
+    if (!data?.length) {
+      const { count } = await this.supabase
+        .getClient()
+        .from('orders')
+        .select('id', { count: 'exact', head: true })
+        .eq('order_type', 'smart_sell')
+        .eq('status', 'processing')
+        .gt('remaining_usdc', 0)
+        .not('escrow_object_id', 'is', null);
+
+      this.logger.log(
+        `No eligible smart sells at rate ${currentRate}. Total active smart sells: ${count || 0}`,
+      );
+    } else {
+      this.logger.log(
+        `Found ${data.length} eligible smart sells for rate ${currentRate}`,
+      );
+    }
+
     return data || [];
   }
 
