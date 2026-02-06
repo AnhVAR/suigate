@@ -561,6 +561,16 @@ export const executeSmartSellEscrow = async (
       obj.type.includes('::escrow::Escrow<')
     );
     escrowObjectId = escrowObj?.objectId;
+
+    // Fallback: if no escrow type match, use first created object
+    if (!escrowObjectId && result.createdObjects.length === 1) {
+      escrowObjectId = result.createdObjects[0].objectId;
+      console.warn('Escrow type not matched, using first created object:', escrowObjectId);
+    }
+  }
+
+  if (!escrowObjectId) {
+    console.error('Created objects from backend:', JSON.stringify(result.createdObjects));
   }
 
   return {

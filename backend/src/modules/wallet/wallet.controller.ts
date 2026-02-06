@@ -82,7 +82,11 @@ export class WalletController {
   @Post('execute-enoki-sponsored')
   async executeEnokiSponsored(
     @Body() dto: ExecuteEnokiSponsoredDto,
-  ): Promise<{ digest: string; success: boolean }> {
+  ): Promise<{
+    digest: string;
+    success: boolean;
+    createdObjects?: Array<{ objectId: string; type: string }>;
+  }> {
     return this.walletService.executeEnokiSponsored(
       dto.digest,
       dto.userSignature,

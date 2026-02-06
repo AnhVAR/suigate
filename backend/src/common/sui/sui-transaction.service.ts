@@ -465,26 +465,44 @@ export class SuiTransactionService implements OnModuleInit {
         signature: userSignature,
       });
 
-      // Query transaction to get created objects
+      // Query transaction to get created objects (with retry for indexing delay)
       let createdObjects: Array<{ objectId: string; type: string }> = [];
-      try {
-        const txResult = await this.client.getTransactionBlock({
-          digest: result.digest,
-          options: { showObjectChanges: true },
-        });
+      const MAX_QUERY_RETRIES = 3;
+      const QUERY_RETRY_DELAY_MS = 2000;
 
-        // Extract created objects from object changes
-        if (txResult.objectChanges) {
-          createdObjects = txResult.objectChanges
-            .filter((change: any) => change.type === 'created')
-            .map((change: any) => ({
-              objectId: change.objectId,
-              type: change.objectType || '',
-            }));
+      for (let attempt = 1; attempt <= MAX_QUERY_RETRIES; attempt++) {
+        try {
+          const txResult = await this.client.getTransactionBlock({
+            digest: result.digest,
+            options: { showObjectChanges: true },
+          });
+
+          // Extract created objects from object changes
+          if (txResult.objectChanges) {
+            createdObjects = txResult.objectChanges
+              .filter((change: any) => change.type === 'created')
+              .map((change: any) => ({
+                objectId: change.objectId,
+                type: change.objectType || '',
+              }));
+          }
+
+          if (createdObjects.length > 0) {
+            this.logger.log(`Found ${createdObjects.length} created objects on attempt ${attempt}`);
+            break;
+          }
+
+          // No created objects found yet - may be indexing delay
+          if (attempt < MAX_QUERY_RETRIES) {
+            this.logger.warn(`No created objects found on attempt ${attempt}, retrying in ${QUERY_RETRY_DELAY_MS}ms...`);
+            await new Promise((resolve) => setTimeout(resolve, QUERY_RETRY_DELAY_MS));
+          }
+        } catch (queryError) {
+          this.logger.warn(`Failed to query transaction objects (attempt ${attempt}): ${queryError.message}`);
+          if (attempt < MAX_QUERY_RETRIES) {
+            await new Promise((resolve) => setTimeout(resolve, QUERY_RETRY_DELAY_MS));
+          }
         }
-      } catch (queryError) {
-        this.logger.warn(`Failed to query transaction objects: ${queryError.message}`);
-        // Continue without objects - non-critical
       }
 
       return {

@@ -74,7 +74,11 @@ export class WalletService {
   async executeEnokiSponsored(
     digest: string,
     userSignature: string,
-  ): Promise<{ digest: string; success: boolean }> {
+  ): Promise<{
+    digest: string;
+    success: boolean;
+    createdObjects?: Array<{ objectId: string; type: string }>;
+  }> {
     return this.suiTransaction.executeEnokiSponsoredTx(digest, userSignature);
   }
 }
