@@ -86,7 +86,7 @@ module suigate::escrow {
         escrow
     }
 
-    /// Create and transfer escrow to owner (convenience function)
+    /// Create and share escrow (shared object so admin can partial_fill/execute)
     public fun create_and_transfer<T>(
         coin: Coin<T>,
         target_rate: u64,
@@ -95,7 +95,7 @@ module suigate::escrow {
         ctx: &mut TxContext,
     ) {
         let escrow = create_escrow(coin, target_rate, bank_account_id, clock, ctx);
-        transfer::transfer(escrow, ctx.sender());
+        transfer::public_share_object(escrow);
     }
 
     /// Cancel escrow - owner only, returns USDC
