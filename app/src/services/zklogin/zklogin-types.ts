@@ -57,6 +57,10 @@ export interface ZkLoginData {
   addressSeed: string;
   suiAddress: string;
   maxEpoch: number;
+  /** Extended pubkey used during proof generation - for verification */
+  extendedPubKey?: string;
+  /** Salt used during proof generation - for verification */
+  salt?: string;
 }
 
 /**

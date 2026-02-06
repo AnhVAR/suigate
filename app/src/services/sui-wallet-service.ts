@@ -5,6 +5,7 @@
  */
 
 import { reconstructKeypair } from './zklogin/zklogin-ephemeral-keypair-service';
+import { getExtendedPubKey } from './zklogin/zklogin-prover-client-service';
 import type { ZkLoginData } from './zklogin/zklogin-types';
 
 // TEST_USDC coin type on Sui Testnet
@@ -185,23 +186,23 @@ const getAuthToken = async (): Promise<string | null> => {
 };
 
 /**
- * Execute sponsored transaction via backend
+ * Execute Enoki-sponsored transaction via backend
+ * Backend calls Enoki API to finalize execution with user's zkLogin signature
  */
-const executeSponsoredViaBackend = async (
-  txBytesBase64: string,
-  userSignature: string,
-  sponsorSignature: string
+const executeEnokiSponsoredViaBackend = async (
+  digest: string,
+  userSignature: string
 ): Promise<{ digest: string; success: boolean }> => {
   const token = await getAuthToken();
   if (!token) throw new Error('Not authenticated');
 
-  const response = await fetch(`${getApiUrl()}/wallet/execute-sponsored`, {
+  const response = await fetch(`${getApiUrl()}/wallet/execute-enoki-sponsored`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ txBytesBase64, userSignature, sponsorSignature }),
+    body: JSON.stringify({ digest, userSignature }),
   });
 
   if (!response.ok) {
@@ -435,15 +436,14 @@ const buildDepositTransactionKind = async (
 };
 
 /**
- * Request transaction sponsorship from backend (new Sui docs pattern)
- * Sends tx kind bytes, receives full tx + sponsor signature
+ * Request transaction sponsorship from backend via Enoki SDK
+ * Sends tx kind bytes, receives full tx bytes + digest for signing
  */
 const sponsorTransactionKindViaBackend = async (
   txKindBase64: string
 ): Promise<{
   txBytesBase64: string;
-  sponsorSignature: string;
-  sponsorAddress: string;
+  digest: string;
 }> => {
   const token = await getAuthToken();
   if (!token) throw new Error('Not authenticated');
@@ -482,8 +482,122 @@ const getCurrentEpochRpc = async (): Promise<number> => {
 };
 
 /**
- * Execute Quick Sell deposit with zkLogin (sponsored by backend)
- * NEW FLOW: App builds tx locally, backend sponsors (Sui docs pattern)
+ * Test zkLogin with non-sponsored transaction (self-transfer 0.001 SUI)
+ * Used to isolate zkLogin issues from sponsorship issues
+ */
+export const testZkLoginNonSponsored = async (
+  zkLoginData: ZkLoginData
+): Promise<{ digest: string; success: boolean }> => {
+  await loadSuiModules();
+
+  console.log('[TestZkLogin] Starting non-sponsored test...');
+  console.log('[TestZkLogin] Address:', zkLoginData.suiAddress);
+
+  // Debug: Check epoch validity
+  const currentEpoch = await getCurrentEpochRpc();
+  console.log('[TestZkLogin] Current epoch:', currentEpoch);
+  console.log('[TestZkLogin] maxEpoch from proof:', zkLoginData.maxEpoch);
+  console.log('[TestZkLogin] Epoch valid?', currentEpoch <= zkLoginData.maxEpoch);
+
+  if (currentEpoch > zkLoginData.maxEpoch) {
+    throw new Error(`Epoch expired! current=${currentEpoch} > maxEpoch=${zkLoginData.maxEpoch}. Please re-login.`);
+  }
+
+  // Debug: Check ephemeral key
+  console.log('[TestZkLogin] secretKey type:', typeof zkLoginData.ephemeralKey.secretKey);
+  console.log('[TestZkLogin] secretKey (first 30):', String(zkLoginData.ephemeralKey.secretKey).substring(0, 30));
+  console.log('[TestZkLogin] publicKey stored:', zkLoginData.ephemeralKey.publicKey);
+  console.log('[TestZkLogin] nonce stored:', zkLoginData.ephemeralKey.nonce);
+  console.log('[TestZkLogin] randomness stored:', zkLoginData.ephemeralKey.randomness);
+
+  const keypair = await reconstructKeypair(zkLoginData.ephemeralKey);
+
+  // Verify nonce can be regenerated
+  const { generateNonce } = await import('@mysten/sui/zklogin');
+  const regeneratedNonce = generateNonce(keypair.getPublicKey(), zkLoginData.maxEpoch, BigInt(zkLoginData.ephemeralKey.randomness));
+  console.log('[TestZkLogin] Nonce regenerated:', regeneratedNonce);
+  console.log('[TestZkLogin] Nonce MATCH?', regeneratedNonce === zkLoginData.ephemeralKey.nonce);
+  const extPubKey = await getExtendedPubKey(keypair);
+  console.log('[TestZkLogin] Extended pubkey (now):', extPubKey);
+  console.log('[TestZkLogin] Extended pubkey (from login):', zkLoginData.extendedPubKey || 'NOT STORED - need fresh login');
+  console.log('[TestZkLogin] ExtPubKey MATCH?', extPubKey === zkLoginData.extendedPubKey);
+  console.log('[TestZkLogin] publicKey from reconstructed:', keypair.getPublicKey().toBase64());
+  console.log('[TestZkLogin] Proof addressSeed:', zkLoginData.addressSeed?.substring(0, 30) + '...');
+  console.log('[TestZkLogin] Proof proofPoints exist?', !!zkLoginData.proof?.proofPoints);
+
+  if (zkLoginData.extendedPubKey && extPubKey !== zkLoginData.extendedPubKey) {
+    throw new Error(`ExtPubKey MISMATCH! login=${zkLoginData.extendedPubKey} now=${extPubKey}`);
+  }
+
+  // Build simple self-transfer tx
+  const txb = new Transaction();
+  const [coin] = txb.splitCoins(txb.gas, [1000000n]); // 0.001 SUI
+  txb.transferObjects([coin], zkLoginData.suiAddress);
+  txb.setSender(zkLoginData.suiAddress);
+
+  // Get gas coins
+  const gasCoins = await getSuiCoinsRpc(zkLoginData.suiAddress);
+  if (!gasCoins.length) throw new Error('No SUI for gas');
+  console.log('[TestZkLogin] Gas coin:', gasCoins[0].coinObjectId);
+
+  txb.setGasPrice(BigInt(await getReferenceGasPriceRpc()));
+  txb.setGasBudget(10000000n);
+  txb.setGasPayment([{
+    objectId: gasCoins[0].coinObjectId,
+    version: gasCoins[0].version,
+    digest: gasCoins[0].digest,
+  }]);
+
+  // Build tx bytes
+  const txBytes = await txb.build();
+  console.log('[TestZkLogin] Tx built, txBytes length:', txBytes.length);
+
+  // Sign using keypair.sign() method like sample genAddressSeed pattern
+  const { signature: userSignature } = await keypair.signTransaction(txBytes);
+  console.log('[TestZkLogin] userSignature scheme:', userSignature.substring(0, 2)); // Should start with 'A'
+  console.log('[TestZkLogin] userSignature (first 50):', userSignature.substring(0, 50));
+  console.log('[TestZkLogin] Stored addressSeed:', zkLoginData.addressSeed);
+
+  // Debug proof structure
+  console.log('[TestZkLogin] Proof structure:');
+  console.log('  - proofPoints.a:', zkLoginData.proof.proofPoints?.a?.length, 'elements');
+  console.log('  - proofPoints.b:', zkLoginData.proof.proofPoints?.b?.length, 'elements');
+  console.log('  - proofPoints.c:', zkLoginData.proof.proofPoints?.c?.length, 'elements');
+  console.log('  - issBase64Details.value (first 20):', zkLoginData.proof.issBase64Details?.value?.substring(0, 20));
+  console.log('  - issBase64Details.indexMod4:', zkLoginData.proof.issBase64Details?.indexMod4);
+  console.log('  - headerBase64 (first 20):', zkLoginData.proof.headerBase64?.substring(0, 20));
+  console.log('  - addressSeed:', zkLoginData.addressSeed);
+  console.log('  - salt:', zkLoginData.salt || 'NOT STORED');
+  console.log('  - maxEpoch:', zkLoginData.maxEpoch);
+
+  const zkLoginSig = getZkLoginSignature({
+    inputs: { ...zkLoginData.proof, addressSeed: zkLoginData.addressSeed },
+    maxEpoch: zkLoginData.maxEpoch,
+    userSignature,
+  });
+  console.log('[TestZkLogin] zkLoginSig (first 100):', zkLoginSig.substring(0, 100));
+
+  console.log('[TestZkLogin] Executing via RPC...');
+  const response = await fetch(TESTNET_RPC, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0', id: 1,
+      method: 'sui_executeTransactionBlock',
+      params: [Buffer.from(txBytes).toString('base64'), [zkLoginSig], { showEffects: true }, 'WaitForLocalExecution'],
+    }),
+  });
+
+  const data = await response.json();
+  console.log('[TestZkLogin] Result:', data.result?.effects?.status || data.error);
+
+  if (data.error) throw new Error(data.error.message);
+  return { digest: data.result?.digest || '', success: data.result?.effects?.status?.status === 'success' };
+};
+
+/**
+ * Execute Quick Sell deposit with zkLogin (sponsored by Enoki via backend)
+ * Flow: App builds tx -> Backend sponsors via Enoki SDK -> App signs -> Backend executes via Enoki
  */
 export const executeQuickSellDeposit = async (
   depositPayload: {
@@ -518,42 +632,18 @@ export const executeQuickSellDeposit = async (
     zkLoginData.suiAddress
   );
   console.log('[QuickSell] txKindBase64 length:', txKindBase64.length);
-  console.log('[QuickSell] txKindBase64 (first 100):', txKindBase64.substring(0, 100));
 
-  // Step 2: Request sponsorship from backend
-  console.log('[QuickSell] Requesting sponsorship...');
-  const { txBytesBase64, sponsorSignature } =
-    await sponsorTransactionKindViaBackend(txKindBase64);
-  console.log('[QuickSell] txBytesBase64 length:', txBytesBase64.length);
-  console.log('[QuickSell] txBytesBase64 (first 100):', txBytesBase64.substring(0, 100));
-  console.log('[QuickSell] sponsorSignature (first 50):', sponsorSignature.substring(0, 50));
+  // Step 2: Request Enoki sponsorship from backend
+  console.log('[QuickSell] Requesting Enoki sponsorship...');
+  const { txBytesBase64, digest } = await sponsorTransactionKindViaBackend(txKindBase64);
+  console.log('[QuickSell] Sponsored - digest:', digest);
 
   // Step 3: Sign with zkLogin
   console.log('[QuickSell] Signing with zkLogin...');
   const txBytesArray = Uint8Array.from(Buffer.from(txBytesBase64, 'base64'));
-  console.log('[QuickSell] txBytesArray length:', txBytesArray.length);
 
   const keypair = await reconstructKeypair(zkLoginData.ephemeralKey);
-  const ephemeralPubKey = keypair.getPublicKey().toBase64();
-
-  // Get extended pubkey (what prover uses)
-  const { getExtendedEphemeralPublicKey } = await import('@mysten/sui/zklogin');
-  const extendedPubKey = getExtendedEphemeralPublicKey(keypair.getPublicKey());
-
-  console.log('[QuickSell] Ephemeral pubkey:', ephemeralPubKey);
-  console.log('[QuickSell] Extended pubkey:', extendedPubKey);
-  console.log('[QuickSell] Stored pubkey:', zkLoginData.ephemeralKey.publicKey);
-  console.log('[QuickSell] Pubkey match:', ephemeralPubKey === zkLoginData.ephemeralKey.publicKey);
-
   const { signature: userSignature } = await keypair.signTransaction(txBytesArray);
-  console.log('[QuickSell] userSignature (first 50):', userSignature.substring(0, 50));
-
-  console.log('[QuickSell] zkLoginData.maxEpoch:', zkLoginData.maxEpoch);
-  console.log('[QuickSell] zkLoginData.addressSeed:', zkLoginData.addressSeed);
-  console.log('[QuickSell] zkLoginData.proof keys:', Object.keys(zkLoginData.proof));
-  console.log('[QuickSell] proof.proofPoints keys:', Object.keys(zkLoginData.proof.proofPoints || {}));
-  console.log('[QuickSell] proof.issBase64Details:', JSON.stringify(zkLoginData.proof.issBase64Details));
-  console.log('[QuickSell] proof.headerBase64 (first 50):', zkLoginData.proof.headerBase64?.substring(0, 50));
 
   const zkLoginSig = getZkLoginSignature({
     inputs: {
@@ -563,35 +653,12 @@ export const executeQuickSellDeposit = async (
     maxEpoch: zkLoginData.maxEpoch,
     userSignature,
   });
-  console.log('[QuickSell] zkLoginSig (first 100):', zkLoginSig.substring(0, 100));
+  console.log('[QuickSell] zkLoginSig created');
 
-  // Step 4: Execute dual-signed transaction
-  console.log('[QuickSell] Executing dual-signed tx...');
-  const execResponse = await fetch(TESTNET_RPC, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      id: 1,
-      method: 'sui_executeTransactionBlock',
-      params: [
-        txBytesBase64,
-        [zkLoginSig, sponsorSignature],
-        { showEffects: true },
-        'WaitForLocalExecution',
-      ],
-    }),
-  });
+  // Step 4: Execute via Enoki (backend handles final submission)
+  console.log('[QuickSell] Executing via Enoki...');
+  const result = await executeEnokiSponsoredViaBackend(digest, zkLoginSig);
+  console.log('[QuickSell] Result:', result);
 
-  const execData = await execResponse.json();
-  console.log('[QuickSell] Result:', execData.result?.effects?.status);
-
-  if (execData.error) {
-    throw new Error(execData.error.message);
-  }
-
-  return {
-    digest: execData.result?.digest || '',
-    success: execData.result?.effects?.status?.status === 'success',
-  };
+  return result;
 };

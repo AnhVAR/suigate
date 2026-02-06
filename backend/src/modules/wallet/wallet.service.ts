@@ -30,44 +30,30 @@ export class WalletService {
     };
   }
 
-  async getSponsorAddress(): Promise<string> {
-    return this.suiTransaction.getSponsorAddress();
-  }
-
-  async sponsorTransaction(
-    txBytesBase64: string,
-    senderAddress: string,
-  ): Promise<{
-    sponsorSignature: string;
-    txBytesWithGas: string;
-    sponsorAddress: string;
-  }> {
-    return this.suiTransaction.sponsorTransaction(txBytesBase64, senderAddress);
-  }
-
-  async executeSponsoredTransaction(
-    txBytesBase64: string,
-    userSignature: string,
-    sponsorSignature: string,
-  ): Promise<{ digest: string; success: boolean }> {
-    return this.suiTransaction.executeSponsoredTransaction(
-      txBytesBase64,
-      userSignature,
-      sponsorSignature,
-    );
-  }
-
+  /**
+   * Sponsor transaction kind via Enoki SDK
+   * Returns tx bytes and digest for user to sign
+   */
   async sponsorTransactionKind(
     txKindBase64: string,
     senderAddress: string,
   ): Promise<{
     txBytesBase64: string;
-    sponsorSignature: string;
-    sponsorAddress: string;
+    digest: string;
   }> {
     return this.suiTransaction.sponsorTransactionKind(
       txKindBase64,
       senderAddress,
     );
+  }
+
+  /**
+   * Execute Enoki-sponsored transaction after user signs
+   */
+  async executeEnokiSponsored(
+    digest: string,
+    userSignature: string,
+  ): Promise<{ digest: string; success: boolean }> {
+    return this.suiTransaction.executeEnokiSponsoredTx(digest, userSignature);
   }
 }

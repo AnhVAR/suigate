@@ -1,10 +1,12 @@
-import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
+import { Injectable, OnModuleInit, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { EnokiClient } from '@mysten/enoki';
 
 @Injectable()
 export class SuiTransactionService implements OnModuleInit {
   private signer: any;
   private client: any;
+  private enokiClient: EnokiClient | null = null;
   private readonly logger = new Logger(SuiTransactionService.name);
 
   private packageId = '';
@@ -44,6 +46,19 @@ export class SuiTransactionService implements OnModuleInit {
       this.oracleId = this.config.get<string>('sui.oracleId') || '';
       this.poolId = this.config.get<string>('sui.poolId') || '';
       this.usdcType = this.config.get<string>('sui.usdcType') || '';
+
+      // Initialize Enoki SDK client for sponsored transactions
+      const enokiSecretKey = this.config.get<string>('ENOKI_PRIVATE_KEY')
+        || process.env.ENOKI_PRIVATE_KEY;
+
+      if (enokiSecretKey) {
+        this.enokiClient = new EnokiClient({
+          apiKey: enokiSecretKey,
+        });
+        this.logger.log('EnokiClient initialized for sponsored transactions');
+      } else {
+        this.logger.warn('ENOKI_PRIVATE_KEY not configured - sponsorship disabled');
+      }
     } catch (error) {
       this.logger.error('Failed to init SuiTransactionService', error);
     }
@@ -231,187 +246,71 @@ export class SuiTransactionService implements OnModuleInit {
   }
 
   /**
-   * Get sponsor address (admin wallet that pays for gas)
-   */
-  getSponsorAddress(): string {
-    if (!this.signer) {
-      throw new Error('Sponsor signer not initialized');
-    }
-    return this.signer.toSuiAddress();
-  }
-
-  /**
-   * Sponsor a user transaction by adding gas payment and signing
-   * Returns the sponsor signature and modified transaction bytes
-   */
-  async sponsorTransaction(
-    txBytesBase64: string,
-    senderAddress: string,
-  ): Promise<{
-    sponsorSignature: string;
-    txBytesWithGas: string;
-    sponsorAddress: string;
-  }> {
-    if (!this.signer) {
-      throw new Error('Sponsor signer not initialized');
-    }
-
-    const { Transaction } = await import('@mysten/sui/transactions');
-
-    // Deserialize the transaction
-    const txBytes = Buffer.from(txBytesBase64, 'base64');
-    const tx = Transaction.from(txBytes);
-
-    // Set gas owner to sponsor (admin wallet)
-    const sponsorAddress = this.signer.toSuiAddress();
-    tx.setSender(senderAddress);
-    tx.setGasOwner(sponsorAddress);
-
-    // Get gas coins from sponsor wallet
-    const gasCoins = await this.client.getCoins({
-      owner: sponsorAddress,
-      coinType: '0x2::sui::SUI',
-      limit: 1,
-    });
-
-    if (!gasCoins.data?.length) {
-      throw new Error('Sponsor has no SUI for gas');
-    }
-
-    const gasCoin = gasCoins.data[0];
-    tx.setGasPayment([
-      {
-        objectId: gasCoin.coinObjectId,
-        version: gasCoin.version,
-        digest: gasCoin.digest,
-      },
-    ]);
-
-    // Set gas budget and price
-    const gasPrice = await this.client.getReferenceGasPrice();
-    tx.setGasPrice(gasPrice);
-    tx.setGasBudget(50000000n); // 0.05 SUI
-
-    // Build the transaction with gas info
-    const builtTx = await tx.build({ client: this.client });
-
-    // Sponsor signs the transaction
-    const { signature: sponsorSignature } =
-      await this.signer.signTransaction(builtTx);
-
-    this.logger.log(
-      `Sponsored transaction for ${senderAddress}, gas paid by ${sponsorAddress}`,
-    );
-
-    return {
-      sponsorSignature,
-      txBytesWithGas: Buffer.from(builtTx).toString('base64'),
-      sponsorAddress,
-    };
-  }
-
-  /**
-   * Execute a sponsored transaction with both user and sponsor signatures
-   */
-  async executeSponsoredTransaction(
-    txBytesBase64: string,
-    userSignature: string,
-    sponsorSignature: string,
-  ): Promise<{ digest: string; success: boolean }> {
-    return this.withRetry(async () => {
-      const result = await this.client.executeTransactionBlock({
-        transactionBlock: txBytesBase64,
-        signature: [userSignature, sponsorSignature],
-        options: { showEffects: true },
-      });
-
-      const success = result.effects?.status?.status === 'success';
-      this.logger.log(
-        `Sponsored transaction executed: ${result.digest}, success: ${success}`,
-      );
-
-      return { digest: result.digest, success };
-    }, 'executeSponsoredTransaction');
-  }
-
-  /**
-   * Sponsor a user-built transaction kind (Sui docs pattern)
+   * Sponsor transaction via Enoki SDK
    * User builds tx locally with onlyTransactionKind: true, sends kind bytes here
-   * We add gas data and sign as sponsor
+   * Returns tx bytes and digest for user to sign
+   * @throws ServiceUnavailableException if Enoki API is unavailable
    */
   async sponsorTransactionKind(
     txKindBase64: string,
     senderAddress: string,
   ): Promise<{
     txBytesBase64: string;
-    sponsorSignature: string;
-    sponsorAddress: string;
+    digest: string;
   }> {
-    if (!this.signer) {
-      throw new Error('Sponsor signer not initialized');
+    this.logger.log(`[EnokiSponsor] Requesting sponsorship for ${senderAddress}`);
+
+    if (!this.enokiClient) {
+      throw new ServiceUnavailableException('EnokiClient not initialized - check ENOKI_PRIVATE_KEY');
     }
 
-    const { Transaction } = await import('@mysten/sui/transactions');
-    const sponsorAddress = this.signer.toSuiAddress();
+    try {
+      // Enoki SDK createSponsoredTransaction with strict allowedMoveCallTargets
+      const result = await this.enokiClient.createSponsoredTransaction({
+        network: 'testnet',
+        transactionKindBytes: txKindBase64,
+        sender: senderAddress,
+        allowedMoveCallTargets: [`${this.packageId}::liquidity_pool::deposit`],
+      });
 
-    this.logger.log(`[SponsorTxKind] Input kindBase64 length: ${txKindBase64.length}`);
-    this.logger.log(`[SponsorTxKind] Sender: ${senderAddress}`);
-    this.logger.log(`[SponsorTxKind] Sponsor: ${sponsorAddress}`);
+      this.logger.log(`[EnokiSponsor] Success - digest: ${result.digest}`);
 
-    // Reconstruct transaction from kind bytes (accepts base64 directly)
-    const tx = Transaction.fromKind(txKindBase64);
-    this.logger.log(`[SponsorTxKind] Transaction reconstructed from kind`);
+      return {
+        txBytesBase64: result.bytes,
+        digest: result.digest,
+      };
+    } catch (error) {
+      this.logger.error(`[EnokiSponsor] Failed: ${error.message}`);
+      throw new ServiceUnavailableException(`Enoki sponsor error: ${error.message}`);
+    }
+  }
 
-    // Set sender and gas owner
-    tx.setSender(senderAddress);
-    tx.setGasOwner(sponsorAddress);
+  /**
+   * Execute sponsored tx via Enoki SDK after user signs
+   * @throws ServiceUnavailableException if Enoki API is unavailable
+   */
+  async executeEnokiSponsoredTx(
+    digest: string,
+    userSignature: string,
+  ): Promise<{ digest: string; success: boolean }> {
+    this.logger.log(`[EnokiExecute] Executing digest: ${digest}`);
 
-    // Get sponsor's SUI coins for gas
-    const gasCoins = await this.client.getCoins({
-      owner: sponsorAddress,
-      coinType: '0x2::sui::SUI',
-      limit: 1,
-    });
-
-    if (!gasCoins.data?.length) {
-      throw new Error('Sponsor has no SUI for gas');
+    if (!this.enokiClient) {
+      throw new ServiceUnavailableException('EnokiClient not initialized - check ENOKI_PRIVATE_KEY');
     }
 
-    const gasCoin = gasCoins.data[0];
-    tx.setGasPayment([
-      {
-        objectId: gasCoin.coinObjectId,
-        version: gasCoin.version,
-        digest: gasCoin.digest,
-      },
-    ]);
+    try {
+      const result = await this.enokiClient.executeSponsoredTransaction({
+        digest,
+        signature: userSignature,
+      });
 
-    // Set gas config
-    const gasPrice = await this.client.getReferenceGasPrice();
-    tx.setGasPrice(gasPrice);
-    tx.setGasBudget(50000000n); // 0.05 SUI
-
-    // Build WITH client to properly resolve transaction
-    this.logger.log(`[SponsorTxKind] Building transaction with client...`);
-    const txBytes = await tx.build({ client: this.client });
-    const txBytesB64 = Buffer.from(txBytes).toString('base64');
-    this.logger.log(`[SponsorTxKind] Built txBytes length: ${txBytes.length}`);
-    this.logger.log(`[SponsorTxKind] Built txBytesB64 (first 100): ${txBytesB64.substring(0, 100)}...`);
-
-    // Sponsor signs
-    const { signature: sponsorSignature } =
-      await this.signer.signTransaction(txBytes);
-    this.logger.log(`[SponsorTxKind] Sponsor signature (first 50): ${sponsorSignature.substring(0, 50)}...`);
-
-    this.logger.log(
-      `[SponsorTxKind] SUCCESS - Sponsored tx kind for ${senderAddress}, gas by ${sponsorAddress}`,
-    );
-
-    return {
-      txBytesBase64: Buffer.from(txBytes).toString('base64'),
-      sponsorSignature,
-      sponsorAddress,
-    };
+      this.logger.log(`[EnokiExecute] Success - digest: ${result.digest}`);
+      return { digest: result.digest, success: true };
+    } catch (error) {
+      this.logger.error(`[EnokiExecute] Failed: ${error.message}`);
+      throw new ServiceUnavailableException(`Enoki execute error: ${error.message}`);
+    }
   }
 
 }

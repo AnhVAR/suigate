@@ -9,7 +9,7 @@ import { USE_MOCK_AUTH } from '../config/api-base-configuration';
 import type { ZkLoginResponseDto } from '@suigate/shared-types';
 
 // zkLogin services
-import { getOrCreateEphemeralKey } from './zklogin/zklogin-ephemeral-keypair-service';
+import { getOrCreateEphemeralKey, clearEphemeralKey } from './zklogin/zklogin-ephemeral-keypair-service';
 import { initiateGoogleLogin } from './zklogin/zklogin-oauth-flow-service';
 import { getSalt } from './zklogin/zklogin-salt-manager-service';
 import {
@@ -41,7 +41,10 @@ export interface ZkLoginResult {
  */
 export const loginWithGoogle = async (): Promise<ZkLoginResult> => {
   try {
-    // 1. Get or create ephemeral keypair with nonce
+    // Clear old keys to start fresh with Enoki
+    await clearEphemeralKey();
+
+    // 1. Create new ephemeral keypair with nonce
     const ephemeralKey = await getOrCreateEphemeralKey();
     console.log('[zkLogin] Created ephemeral key, initiating OAuth...');
 
@@ -84,21 +87,26 @@ export const continueZkLoginWithJwt = async (
     // Load ephemeral key (created in loginWithGoogle)
     const ephemeralKey = await getOrCreateEphemeralKey();
 
-    // 3. Get salt from Mysten salt service
-    console.log('[zkLogin] Getting salt...');
-    const salt = await getSalt(jwt, userId);
+    // 3. Get salt from Enoki (force refresh to get Enoki salt)
+    console.log('[zkLogin] Getting salt from Enoki...');
+    const salt = await getSalt(jwt, userId, true); // Force refresh for Enoki
+    console.log('[zkLogin] Salt used for proof:', salt);
 
-    // 4. Generate ZK proof from Mysten prover
+    // 4. Generate ZK proof from Enoki
     console.log('[zkLogin] Generating ZK proof...');
     const keypair = await reconstructKeypair(ephemeralKey);
     const extendedPubKey = await getExtendedPubKey(keypair);
+    // Enoki expects Sui public key format (with scheme flag prefix)
+    const ephemeralPublicKeyBase64 = keypair.getPublicKey().toSuiPublicKey();
     console.log('[zkLogin] Extended pubkey for prover:', extendedPubKey);
+    console.log('[zkLogin] Ephemeral pubkey (Sui format):', ephemeralPublicKeyBase64);
     console.log('[zkLogin] maxEpoch for proof:', ephemeralKey.maxEpoch);
     console.log('[zkLogin] randomness (first 20):', ephemeralKey.randomness?.substring(0, 20));
 
     const proof = await generateZkProof({
       jwt,
       extendedEphemeralPublicKey: extendedPubKey,
+      ephemeralPublicKeyBase64,
       maxEpoch: ephemeralKey.maxEpoch,
       randomness: ephemeralKey.randomness,
       salt,
@@ -129,6 +137,8 @@ export const continueZkLoginWithJwt = async (
       addressSeed,
       suiAddress,
       maxEpoch: ephemeralKey.maxEpoch,
+      extendedPubKey, // Store for verification during signing
+      salt, // Store for verification during signing
     };
 
     console.log('[zkLogin] Login complete!', { suiAddress });

@@ -4,25 +4,17 @@ import { WalletService } from './wallet.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { WalletBalanceDto } from './dto/wallet-balance.dto';
 
-class SponsorTransactionDto {
-  @IsString()
-  txBytesBase64: string;
-}
-
-class ExecuteSponsoredDto {
-  @IsString()
-  txBytesBase64: string;
-
-  @IsString()
-  userSignature: string;
-
-  @IsString()
-  sponsorSignature: string;
-}
-
 class SponsorTxKindDto {
   @IsString()
   txKindBase64: string;
+}
+
+class ExecuteEnokiSponsoredDto {
+  @IsString()
+  digest: string;
+
+  @IsString()
+  userSignature: string;
 }
 
 @Controller('wallet')
@@ -35,50 +27,34 @@ export class WalletController {
     return this.walletService.getBalance(req.user.suiAddress);
   }
 
-  @Get('sponsor-address')
-  async getSponsorAddress(): Promise<{ address: string }> {
-    const address = await this.walletService.getSponsorAddress();
-    return { address };
-  }
-
-  @Post('sponsor-transaction')
-  async sponsorTransaction(
-    @Request() req,
-    @Body() dto: SponsorTransactionDto,
-  ): Promise<{
-    sponsorSignature: string;
-    txBytesWithGas: string;
-    sponsorAddress: string;
-  }> {
-    return this.walletService.sponsorTransaction(
-      dto.txBytesBase64,
-      req.user.suiAddress,
-    );
-  }
-
-  @Post('execute-sponsored')
-  async executeSponsoredTransaction(
-    @Body() dto: ExecuteSponsoredDto,
-  ): Promise<{ digest: string; success: boolean }> {
-    return this.walletService.executeSponsoredTransaction(
-      dto.txBytesBase64,
-      dto.userSignature,
-      dto.sponsorSignature,
-    );
-  }
-
+  /**
+   * Sponsor transaction kind via Enoki SDK
+   * Returns tx bytes and digest for user to sign
+   */
   @Post('sponsor-tx-kind')
   async sponsorTransactionKind(
     @Request() req,
     @Body() dto: SponsorTxKindDto,
   ): Promise<{
     txBytesBase64: string;
-    sponsorSignature: string;
-    sponsorAddress: string;
+    digest: string;
   }> {
     return this.walletService.sponsorTransactionKind(
       dto.txKindBase64,
       req.user.suiAddress,
+    );
+  }
+
+  /**
+   * Execute Enoki-sponsored transaction after user signs
+   */
+  @Post('execute-enoki-sponsored')
+  async executeEnokiSponsored(
+    @Body() dto: ExecuteEnokiSponsoredDto,
+  ): Promise<{ digest: string; success: boolean }> {
+    return this.walletService.executeEnokiSponsored(
+      dto.digest,
+      dto.userSignature,
     );
   }
 }

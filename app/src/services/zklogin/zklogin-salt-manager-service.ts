@@ -1,50 +1,46 @@
 /**
  * Salt manager service for zkLogin
- * Retrieves salt from Mysten Labs salt service (or derives locally as fallback)
+ * Retrieves salt from Enoki (Mysten's hosted zkLogin service)
  * Salt ensures same user always gets same Sui address
  */
 
 import * as SecureStore from 'expo-secure-store';
-import * as Crypto from 'expo-crypto';
+import {
+  ENOKI_BASE_URL,
+  getEnokiHeaders,
+} from '../../config/api-base-configuration';
 
 const SALT_STORAGE_KEY = 'zklogin_user_salt';
-const MYSTEN_SALT_SERVICE_URL = 'https://salt.api.mystenlabs.com/get_salt';
 
-// Use local salt derivation (Mysten service requires registered client ID)
-const USE_LOCAL_SALT = true;
-
-interface SaltServiceResponse {
+interface EnokiSaltResponse {
+  address: string;
   salt: string;
 }
 
 /**
- * Get salt for zkLogin
- * Uses local derivation for hackathon (Mysten service requires registered client)
+ * Get salt for zkLogin from Enoki
  *
  * @param jwt - The JWT from Google OAuth
  * @param userId - User's sub claim for cache key
  */
-export const getSalt = async (jwt: string, userId: string): Promise<string> => {
+export const getSalt = async (jwt: string, userId: string, forceRefresh = false): Promise<string> => {
   // Check cached salt first (deterministic per user)
-  const cached = await loadCachedSalt(userId);
-  if (cached) {
-    console.log('[Salt] Using cached salt');
-    return cached;
-  }
-
-  let salt: string;
-
-  if (USE_LOCAL_SALT) {
-    // Derive salt locally (deterministic from userId)
-    console.log('[Salt] Deriving salt locally...');
-    salt = await deriveLocalSalt(userId);
+  if (!forceRefresh) {
+    const cached = await loadCachedSalt(userId);
+    if (cached) {
+      console.log('[Salt] Using cached salt');
+      return cached;
+    }
   } else {
-    // Fetch from Mysten salt service
-    console.log('[Salt] Fetching from Mysten service...');
-    salt = await fetchSaltFromMystenService(jwt);
+    console.log('[Salt] Force refresh - clearing cached salt');
+    await clearSalt(userId);
   }
 
-  console.log('[Salt] Derived salt (first 20 chars):', salt.substring(0, 20) + '...');
+  // Fetch from Enoki
+  console.log('[Salt] Fetching from Enoki...');
+  const salt = await fetchSaltFromEnoki(jwt);
+
+  console.log('[Salt] Got salt (first 20 chars):', salt.substring(0, 20) + '...');
 
   // Cache for future use
   await cacheSalt(userId, salt);
@@ -52,47 +48,32 @@ export const getSalt = async (jwt: string, userId: string): Promise<string> => {
 };
 
 /**
- * Derive salt locally using SHA256 hash of userId + app secret
- * zkLogin requires 16 bytes (128 bits) salt
+ * Fetch salt from Enoki service
+ * Enoki derives a deterministic salt from the JWT
  */
-const deriveLocalSalt = async (userId: string): Promise<string> => {
-  // Salt seed should be consistent per app deployment
-  const saltSeed = `suigate-zklogin-salt-v1:${userId}`;
-  const hashHex = await Crypto.digestStringAsync(
-    Crypto.CryptoDigestAlgorithm.SHA256,
-    saltSeed
-  );
-  // Take first 32 hex chars (16 bytes = 128 bits) for zkLogin
-  const salt16BytesHex = hashHex.substring(0, 32);
-  const saltBigInt = BigInt('0x' + salt16BytesHex);
-  return saltBigInt.toString();
-};
-
-/**
- * Fetch salt from Mysten Labs salt service
- * The service derives a deterministic salt from the JWT
- */
-const fetchSaltFromMystenService = async (jwt: string): Promise<string> => {
-  const response = await fetch(MYSTEN_SALT_SERVICE_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ token: jwt }),
+const fetchSaltFromEnoki = async (jwt: string): Promise<string> => {
+  const response = await fetch(`${ENOKI_BASE_URL}/zklogin`, {
+    method: 'GET',
+    headers: getEnokiHeaders(jwt),
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Salt service error: ${response.status} - ${errorText}`);
+    throw new Error(`Enoki salt error: ${response.status} - ${errorText}`);
   }
 
-  const data: SaltServiceResponse = await response.json();
+  const response_data = await response.json();
+  console.log('[Salt] Enoki response:', JSON.stringify(response_data));
 
-  if (!data.salt) {
-    throw new Error('Salt service returned empty salt');
+  // Enoki wraps response in "data" object
+  const data = response_data.data || response_data;
+  const salt = data.salt;
+  if (!salt) {
+    throw new Error(`Enoki returned empty salt. Response: ${JSON.stringify(response_data)}`);
   }
 
-  return data.salt;
+  console.log('[Salt] Enoki address:', data.address);
+  return salt;
 };
 
 /**

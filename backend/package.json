@@ -21,6 +21,7 @@
     "test:api": "./scripts/test-api-comprehensive.sh"
   },
   "dependencies": {
+    "@mysten/enoki": "^1.0.1",
     "@mysten/sui": "^2.1.0",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.2",
