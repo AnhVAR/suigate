@@ -425,69 +425,6 @@ const getCurrentEpochRpc = async (): Promise<number> => {
 };
 
 /**
- * Test zkLogin with non-sponsored transaction (self-transfer 0.001 SUI)
- * Used to isolate zkLogin issues from sponsorship issues
- */
-export const testZkLoginNonSponsored = async (
-  zkLoginData: ZkLoginData
-): Promise<{ digest: string; success: boolean }> => {
-  await loadSuiModules();
-
-  // Validate epoch
-  const currentEpoch = await getCurrentEpochRpc();
-  if (currentEpoch > zkLoginData.maxEpoch) {
-    throw new Error(`Epoch expired! current=${currentEpoch} > maxEpoch=${zkLoginData.maxEpoch}. Please re-login.`);
-  }
-
-  const keypair = await reconstructKeypair(zkLoginData.ephemeralKey);
-  const extPubKey = await getExtendedPubKey(keypair);
-
-  if (zkLoginData.extendedPubKey && extPubKey !== zkLoginData.extendedPubKey) {
-    throw new Error(`ExtPubKey MISMATCH! login=${zkLoginData.extendedPubKey} now=${extPubKey}`);
-  }
-
-  // Build simple self-transfer tx
-  const txb = new Transaction();
-  const [coin] = txb.splitCoins(txb.gas, [1000000n]); // 0.001 SUI
-  txb.transferObjects([coin], zkLoginData.suiAddress);
-  txb.setSender(zkLoginData.suiAddress);
-
-  // Get gas coins
-  const gasCoins = await getSuiCoinsRpc(zkLoginData.suiAddress);
-  if (!gasCoins.length) throw new Error('No SUI for gas');
-
-  txb.setGasPrice(BigInt(await getReferenceGasPriceRpc()));
-  txb.setGasBudget(10000000n);
-  txb.setGasPayment([{
-    objectId: gasCoins[0].coinObjectId,
-    version: gasCoins[0].version,
-    digest: gasCoins[0].digest,
-  }]);
-
-  const txBytes = await txb.build();
-  const { signature: userSignature } = await keypair.signTransaction(txBytes);
-
-  const zkLoginSig = getZkLoginSignature({
-    inputs: { ...zkLoginData.proof, addressSeed: zkLoginData.addressSeed },
-    maxEpoch: zkLoginData.maxEpoch,
-    userSignature,
-  });
-  const response = await fetch(TESTNET_RPC, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      jsonrpc: '2.0', id: 1,
-      method: 'sui_executeTransactionBlock',
-      params: [Buffer.from(txBytes).toString('base64'), [zkLoginSig], { showEffects: true }, 'WaitForLocalExecution'],
-    }),
-  });
-
-  const data = await response.json();
-  if (data.error) throw new Error(data.error.message);
-  return { digest: data.result?.digest || '', success: data.result?.effects?.status?.status === 'success' };
-};
-
-/**
  * Execute Quick Sell deposit with zkLogin (sponsored by Enoki via backend)
  * Backend builds tx with SuiClient (handles shared objects correctly)
  * Flow: Backend builds+sponsors tx -> App signs with zkLogin -> Backend executes

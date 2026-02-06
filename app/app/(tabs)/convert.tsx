@@ -19,7 +19,7 @@ import {
   validateTargetRate,
   type DepositPayload,
 } from '../../src/services/trading-service';
-import { executeQuickSellDeposit, testZkLoginNonSponsored } from '../../src/services/sui-wallet-service';
+import { executeQuickSellDeposit } from '../../src/services/sui-wallet-service';
 import { ordersBuySellApiService } from '../../src/api/orders-buy-sell-api-service';
 import {
   PrimaryButton,
@@ -503,29 +503,6 @@ export default function ConvertScreen() {
           disabled={!canAccess || amountNum <= 0}
         />
 
-        {/* DEV: Test zkLogin non-sponsored */}
-        {__DEV__ && zkLoginData && (
-          <Pressable
-            onPress={async () => {
-              try {
-                Alert.alert('Testing', 'Running non-sponsored zkLogin test...');
-                const result = await testZkLoginNonSponsored(zkLoginData);
-                Alert.alert(
-                  result.success ? 'Success!' : 'Failed',
-                  `Digest: ${result.digest?.slice(0, 20)}...`
-                );
-              } catch (error) {
-                Alert.alert('Error', String(error));
-                console.error('[TestZkLogin] Error:', error);
-              }
-            }}
-            className="mt-4 py-3 bg-orange-100 rounded-xl"
-          >
-            <Text className="text-orange-700 text-center font-medium">
-              [DEV] Test zkLogin (Non-Sponsored)
-            </Text>
-          </Pressable>
-        )}
       </ScrollView>
     </SafeAreaView>
   );
