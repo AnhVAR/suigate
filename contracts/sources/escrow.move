@@ -156,6 +156,7 @@ module suigate::escrow {
     }
 
     /// Partial fill of escrow - admin only
+    /// Uses buy_rate for validation since partial_fill is triggered by buy orders
     public fun partial_fill<T>(
         _admin: &AdminCap,
         escrow: &mut Escrow<T>,
@@ -165,7 +166,7 @@ module suigate::escrow {
         recipient: address,
         ctx: &mut TxContext,
     ) {
-        let current_rate = price_oracle::get_sell_rate(oracle, clock);
+        let current_rate = price_oracle::get_buy_rate(oracle, clock);
         assert!(current_rate >= escrow.target_rate, E_RATE_NOT_MET);
         assert!(fill_amount > 0, E_ZERO_AMOUNT);
         assert!(escrow.balance.value() >= fill_amount, E_INSUFFICIENT_BALANCE);
