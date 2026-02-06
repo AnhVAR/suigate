@@ -430,9 +430,17 @@ const buildDepositTransactionKind = async (
   });
 
   // Build transaction kind only (no gas data) - Sui sponsored tx pattern
+  console.log('[BuildTxKind] Building with onlyTransactionKind: true');
   const kindBytes = await txb.build({ onlyTransactionKind: true });
 
-  return Buffer.from(kindBytes).toString('base64');
+  console.log('[BuildTxKind] kindBytes length:', kindBytes.length);
+  console.log('[BuildTxKind] kindBytes (first 20):', Array.from(kindBytes.slice(0, 20)));
+
+  const base64 = Buffer.from(kindBytes).toString('base64');
+  console.log('[BuildTxKind] base64 length:', base64.length);
+  console.log('[BuildTxKind] base64 (first 50):', base64.substring(0, 50));
+
+  return base64;
 };
 
 /**
