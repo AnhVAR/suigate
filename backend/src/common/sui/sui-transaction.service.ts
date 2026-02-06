@@ -265,12 +265,16 @@ export class SuiTransactionService implements OnModuleInit {
     }
 
     try {
+      const allowedTargets = [`${this.packageId}::liquidity_pool::deposit`];
+      this.logger.log(`[EnokiSponsor] allowedMoveCallTargets: ${allowedTargets}`);
+      this.logger.log(`[EnokiSponsor] txKindBase64 length: ${txKindBase64.length}`);
+
       // Enoki SDK createSponsoredTransaction with strict allowedMoveCallTargets
       const result = await this.enokiClient.createSponsoredTransaction({
         network: 'testnet',
         transactionKindBytes: txKindBase64,
         sender: senderAddress,
-        allowedMoveCallTargets: [`${this.packageId}::liquidity_pool::deposit`],
+        allowedMoveCallTargets: allowedTargets,
       });
 
       this.logger.log(`[EnokiSponsor] Success - digest: ${result.digest}`);
@@ -279,8 +283,9 @@ export class SuiTransactionService implements OnModuleInit {
         txBytesBase64: result.bytes,
         digest: result.digest,
       };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`[EnokiSponsor] Failed: ${error.message}`);
+      this.logger.error(`[EnokiSponsor] Error details: ${JSON.stringify(error.response?.data || error.cause || {})}`);
       throw new ServiceUnavailableException(`Enoki sponsor error: ${error.message}`);
     }
   }
