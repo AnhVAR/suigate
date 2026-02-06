@@ -16,9 +16,8 @@ interface CachedRate {
 @Injectable()
 export class RatesService implements OnModuleInit {
   private cache: CachedRate | null = null;
-  private readonly CACHE_TTL = 60000; // 60 seconds
+  private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes - avoid CoinGecko rate limits
   private readonly logger = new Logger(RatesService.name);
-  private oracleSyncCount = 0; // Track calls to sync oracle every 5 minutes
 
   constructor(
     private supabase: SupabaseService,
@@ -39,7 +38,7 @@ export class RatesService implements OnModuleInit {
     return this.refreshRates();
   }
 
-  @Cron(CronExpression.EVERY_MINUTE)
+  @Cron(CronExpression.EVERY_5_MINUTES)
   async refreshRates(): Promise<RatesResponseDto> {
     try {
       // Get VND/USDC rate directly from CoinGecko
@@ -68,12 +67,8 @@ export class RatesService implements OnModuleInit {
       // Store in database for history
       await this.storeRate(rates);
 
-      // Sync to on-chain oracle every 5 minutes (every 5th call)
-      this.oracleSyncCount++;
-      if (this.oracleSyncCount >= 5) {
-        this.oracleSyncCount = 0;
-        await this.syncOracleRates(rates);
-      }
+      // Sync to on-chain oracle on every refresh (cron runs every 5 min)
+      await this.syncOracleRates(rates);
 
       this.logger.log(
         `Rates refreshed: mid=${rates.midRate}, buy=${rates.buyRate}, sell=${rates.sellRate}`,
@@ -102,18 +97,31 @@ export class RatesService implements OnModuleInit {
   }
 
   private async fetchVndRate(): Promise<number> {
-    // CoinGecko: Get USDC price in VND directly
-    const response = await fetch(
-      `${COINGECKO_API}/simple/price?ids=usd-coin&vs_currencies=vnd`,
-    );
+    const MAX_RETRIES = 2;
+    let lastError: Error;
 
-    if (!response.ok) {
-      throw new Error(`CoinGecko API error: ${response.status}`);
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      const response = await fetch(
+        `${COINGECKO_API}/simple/price?ids=usd-coin&vs_currencies=vnd`,
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        return data['usd-coin']?.vnd || 25000;
+      }
+
+      // On 429, wait and retry
+      if (response.status === 429 && attempt < MAX_RETRIES) {
+        const delay = (attempt + 1) * 5000; // 5s, 10s backoff
+        this.logger.warn(`CoinGecko rate limited, retrying in ${delay}ms...`);
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+
+      lastError = new Error(`CoinGecko API error: ${response.status}`);
     }
 
-    const data = await response.json();
-    // Returns: { "usd-coin": { "vnd": 25000 } }
-    return data['usd-coin']?.vnd || 25000; // Fallback to 25000
+    throw lastError!;
   }
 
   private async storeRate(rates: RatesResponseDto): Promise<void> {
