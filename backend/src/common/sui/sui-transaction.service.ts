@@ -1,12 +1,11 @@
 import { Injectable, OnModuleInit, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { EnokiClient } from '@mysten/enoki';
 
 @Injectable()
 export class SuiTransactionService implements OnModuleInit {
   private signer: any;
   private client: any;
-  private enokiClient: EnokiClient | null = null;
+  private enokiClient: any = null;
   private readonly logger = new Logger(SuiTransactionService.name);
 
   private packageId = '';
@@ -47,11 +46,12 @@ export class SuiTransactionService implements OnModuleInit {
       this.poolId = this.config.get<string>('sui.poolId') || '';
       this.usdcType = this.config.get<string>('sui.usdcType') || '';
 
-      // Initialize Enoki SDK client for sponsored transactions
+      // Initialize Enoki SDK client for sponsored transactions (dynamic import for ESM compat)
       const enokiSecretKey = this.config.get<string>('ENOKI_PRIVATE_KEY')
         || process.env.ENOKI_PRIVATE_KEY;
 
       if (enokiSecretKey) {
+        const { EnokiClient } = await import('@mysten/enoki');
         this.enokiClient = new EnokiClient({
           apiKey: enokiSecretKey,
         });
