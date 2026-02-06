@@ -4,8 +4,12 @@ import { SupabaseService } from '../../common/supabase/supabase.service';
 import { SuiTransactionService } from '../../common/sui/sui-transaction.service';
 import { RatesResponseDto } from './dto/exchange-rates.dto';
 
-// CoinGecko API for VND rate (free, no auth needed)
-const COINGECKO_API = 'https://api.coingecko.com/api/v3';
+// Free exchange rate API - no rate limits, no API key
+const EXCHANGE_API_PRIMARY =
+  'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.min.json';
+const EXCHANGE_API_FALLBACK =
+  'https://latest.currency-api.pages.dev/v1/currencies/usd.min.json';
+
 const SPREAD_BPS = 50; // 0.5% spread
 
 interface CachedRate {
@@ -16,7 +20,7 @@ interface CachedRate {
 @Injectable()
 export class RatesService implements OnModuleInit {
   private cache: CachedRate | null = null;
-  private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes - avoid CoinGecko rate limits
+  private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
   private readonly logger = new Logger(RatesService.name);
 
   constructor(
@@ -29,46 +33,40 @@ export class RatesService implements OnModuleInit {
   }
 
   async getCurrentRates(): Promise<RatesResponseDto> {
-    // Return cached if valid
     if (this.cache && Date.now() < this.cache.expiresAt) {
       return this.cache.data;
     }
-
-    // Fetch fresh rates
     return this.refreshRates();
   }
 
   @Cron(CronExpression.EVERY_5_MINUTES)
   async refreshRates(): Promise<RatesResponseDto> {
     try {
-      // Get VND/USDC rate directly from CoinGecko
       const midRate = await this.fetchVndRate();
 
-      // Apply spread
       const spreadMultiplier = SPREAD_BPS / 10000;
-      const buyRate = midRate * (1 + spreadMultiplier); // User pays more
-      const sellRate = midRate * (1 - spreadMultiplier); // User gets less
+      const buyRate = midRate * (1 + spreadMultiplier);
+      const sellRate = midRate * (1 - spreadMultiplier);
 
       const rates: RatesResponseDto = {
         midRate: Math.round(midRate * 100) / 100,
         buyRate: Math.round(buyRate * 100) / 100,
         sellRate: Math.round(sellRate * 100) / 100,
         spreadBps: SPREAD_BPS,
-        source: 'coingecko',
+        source: 'exchange-api',
         updatedAt: new Date().toISOString(),
       };
 
-      // Cache rates
+      // Sync to on-chain oracle FIRST (source of truth)
+      await this.syncOracleRates(rates);
+
+      // Cache after oracle sync succeeds
       this.cache = {
         data: rates,
         expiresAt: Date.now() + this.CACHE_TTL,
       };
 
-      // Store in database for history
       await this.storeRate(rates);
-
-      // Sync to on-chain oracle on every refresh (cron runs every 5 min)
-      await this.syncOracleRates(rates);
 
       this.logger.log(
         `Rates refreshed: mid=${rates.midRate}, buy=${rates.buyRate}, sell=${rates.sellRate}`,
@@ -77,13 +75,11 @@ export class RatesService implements OnModuleInit {
     } catch (error) {
       this.logger.error('Failed to refresh rates', error);
 
-      // Return cached if available, even if expired
       if (this.cache) {
         this.logger.warn('Using stale cached rates');
         return this.cache.data;
       }
 
-      // Fallback to default rate if no cache
       const fallbackRate = 25000;
       return {
         midRate: fallbackRate,
@@ -96,32 +92,27 @@ export class RatesService implements OnModuleInit {
     }
   }
 
+  /** Fetch USD/VND rate with primary + fallback URLs */
   private async fetchVndRate(): Promise<number> {
-    const MAX_RETRIES = 2;
-    let lastError: Error;
+    const urls = [EXCHANGE_API_PRIMARY, EXCHANGE_API_FALLBACK];
 
-    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-      const response = await fetch(
-        `${COINGECKO_API}/simple/price?ids=usd-coin&vs_currencies=vnd`,
-      );
+    for (const url of urls) {
+      try {
+        const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
+        if (!response.ok) continue;
 
-      if (response.ok) {
         const data = await response.json();
-        return data['usd-coin']?.vnd || 25000;
-      }
+        const vndRate = data?.usd?.vnd;
 
-      // On 429, wait and retry
-      if (response.status === 429 && attempt < MAX_RETRIES) {
-        const delay = (attempt + 1) * 5000; // 5s, 10s backoff
-        this.logger.warn(`CoinGecko rate limited, retrying in ${delay}ms...`);
-        await new Promise((r) => setTimeout(r, delay));
-        continue;
+        if (vndRate && vndRate > 0) {
+          return vndRate;
+        }
+      } catch (err) {
+        this.logger.warn(`Failed to fetch from ${url}: ${err.message}`);
       }
-
-      lastError = new Error(`CoinGecko API error: ${response.status}`);
     }
 
-    throw lastError!;
+    throw new Error('All exchange rate API endpoints failed');
   }
 
   private async storeRate(rates: RatesResponseDto): Promise<void> {
@@ -134,7 +125,6 @@ export class RatesService implements OnModuleInit {
         source: rates.source,
       });
     } catch (error) {
-      // Non-critical, just log
       this.logger.warn('Failed to store rate history', error);
     }
   }
@@ -147,7 +137,6 @@ export class RatesService implements OnModuleInit {
       this.logger.log(`Oracle synced: midRate=${midRate}, tx=${txDigest}`);
     } catch (error) {
       this.logger.error('Failed to sync oracle rates', error);
-      // Non-critical for hackathon, just log
     }
   }
 
