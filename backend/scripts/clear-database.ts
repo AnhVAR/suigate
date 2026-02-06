@@ -21,10 +21,22 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 async function clearDatabase() {
   console.log('🗑️  Clearing database...\n');
 
-  const tables = ['orders', 'kyc_submissions', 'bank_accounts', 'users'];
+  // UUID-based tables
+  const uuidTables = ['order_matches', 'orders', 'users'];
+  // Integer-based tables
+  const intTables = ['transactions', 'conversion_rates', 'bank_accounts'];
 
-  for (const table of tables) {
+  for (const table of uuidTables) {
     const { error } = await supabase.from(table).delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    if (error) {
+      console.log(`❌ ${table}: ${error.message}`);
+    } else {
+      console.log(`✅ ${table}: cleared`);
+    }
+  }
+
+  for (const table of intTables) {
+    const { error } = await supabase.from(table).delete().gt('id', 0);
     if (error) {
       console.log(`❌ ${table}: ${error.message}`);
     } else {
