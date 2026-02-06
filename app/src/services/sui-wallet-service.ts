@@ -10,7 +10,7 @@ import type { ZkLoginData } from './zklogin/zklogin-types';
 
 // TEST_USDC coin type on Sui Testnet
 const TEST_USDC_TYPE =
-  '0xfda5e7d874aee36569b18e6df8c62693e93c8dfa76e317543aa9bb827ed91d13::test_usdc::TEST_USDC';
+  '0xb86b075e5d2323d4bc9fcd9c6cb23c800c25a6b9a93f897ed8a8e5f12900b35a::test_usdc::TEST_USDC';
 
 // Lazy-loaded Sui SDK modules (only Transaction and zkLogin - no jsonRpc due to RN compat issues)
 let Transaction: any = null;
