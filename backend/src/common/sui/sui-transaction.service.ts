@@ -449,7 +449,11 @@ export class SuiTransactionService implements OnModuleInit {
   async executeEnokiSponsoredTx(
     digest: string,
     userSignature: string,
-  ): Promise<{ digest: string; success: boolean }> {
+  ): Promise<{
+    digest: string;
+    success: boolean;
+    createdObjects?: Array<{ objectId: string; type: string }>;
+  }> {
 
     if (!this.enokiClient) {
       throw new ServiceUnavailableException('EnokiClient not initialized - check ENOKI_PRIVATE_KEY');
@@ -460,7 +464,34 @@ export class SuiTransactionService implements OnModuleInit {
         digest,
         signature: userSignature,
       });
-      return { digest: result.digest, success: true };
+
+      // Query transaction to get created objects
+      let createdObjects: Array<{ objectId: string; type: string }> = [];
+      try {
+        const txResult = await this.client.getTransactionBlock({
+          digest: result.digest,
+          options: { showObjectChanges: true },
+        });
+
+        // Extract created objects from object changes
+        if (txResult.objectChanges) {
+          createdObjects = txResult.objectChanges
+            .filter((change: any) => change.type === 'created')
+            .map((change: any) => ({
+              objectId: change.objectId,
+              type: change.objectType || '',
+            }));
+        }
+      } catch (queryError) {
+        this.logger.warn(`Failed to query transaction objects: ${queryError.message}`);
+        // Continue without objects - non-critical
+      }
+
+      return {
+        digest: result.digest,
+        success: true,
+        createdObjects,
+      };
     } catch (error) {
       this.logger.error(`Enoki execute failed: ${error.message}`);
       throw new ServiceUnavailableException(`Enoki execute error: ${error.message}`);

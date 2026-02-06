@@ -18,8 +18,12 @@ import {
   createSmartSellOrder,
   validateTargetRate,
   type DepositPayload,
+  type EscrowPayload,
 } from '../../src/services/trading-service';
-import { executeQuickSellDeposit } from '../../src/services/sui-wallet-service';
+import {
+  executeQuickSellDeposit,
+  executeSmartSellEscrow,
+} from '../../src/services/sui-wallet-service';
 import { ordersBuySellApiService } from '../../src/api/orders-buy-sell-api-service';
 import {
   PrimaryButton,
@@ -56,6 +60,7 @@ export default function ConvertScreen() {
     amountUsdc?: number;
     expiresAt?: Date;
     depositPayload?: DepositPayload;
+    escrowPayload?: EscrowPayload;
   } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDepositing, setIsDepositing] = useState(false);
@@ -200,8 +205,18 @@ export default function ConvertScreen() {
           Alert.alert('Error', 'Please select a bank account');
           return;
         }
-        await createSmartSellOrder(amountNum, targetRateNum, selectedBankId);
-        setStep('success');
+        if (amountNum > usdcBalance) {
+          Alert.alert('Error', 'Insufficient balance');
+          return;
+        }
+        const result = await createSmartSellOrder(amountNum, targetRateNum, selectedBankId);
+        setOrderData({
+          orderId: result.orderId,
+          amountUsdc: result.amountUsdc,
+          amountVnd: result.amountVnd,
+          escrowPayload: result.escrowPayload,
+        });
+        setStep('deposit');
       }
     } catch (error) {
       const errorMessage = extractErrorMessage(error);
@@ -220,6 +235,12 @@ export default function ConvertScreen() {
   };
 
   const handleDeposit = async () => {
+    // Route to appropriate handler based on mode
+    if (mode === 'smart-sell') {
+      return handleSmartSellEscrow();
+    }
+
+    // Quick Sell deposit flow
     if (!orderData?.depositPayload) {
       Alert.alert('Error', 'Missing deposit payload from order');
       console.error('depositPayload missing:', orderData);
@@ -259,16 +280,66 @@ export default function ConvertScreen() {
     }
   };
 
-  // Deposit Step (Quick Sell)
+  const handleSmartSellEscrow = async () => {
+    if (!orderData?.escrowPayload) {
+      Alert.alert('Error', 'Missing escrow payload from order');
+      console.error('escrowPayload missing:', orderData);
+      return;
+    }
+    if (!zkLoginData) {
+      Alert.alert(
+        'Session Expired',
+        'Your wallet session has expired. Please log out and log in again to continue.',
+        [
+          { text: 'OK', onPress: () => router.push('/settings') }
+        ]
+      );
+      console.error('zkLoginData missing - session needs refresh');
+      return;
+    }
+
+    setIsDepositing(true);
+    try {
+      // Execute escrow transaction with zkLogin
+      const result = await executeSmartSellEscrow(orderData.escrowPayload, zkLoginData);
+
+      if (!result.success) {
+        throw new Error('Escrow transaction failed');
+      }
+
+      if (!result.escrowObjectId) {
+        throw new Error('Failed to extract escrow object ID from transaction');
+      }
+
+      // Confirm order with tx hash
+      await ordersBuySellApiService.confirmOrder(orderData.orderId!, { txHash: result.digest });
+
+      // Add escrow object ID to order
+      await ordersBuySellApiService.addEscrow(orderData.orderId!, result.escrowObjectId);
+
+      setStep('success');
+    } catch (error) {
+      const errorMessage = extractErrorMessage(error);
+      Alert.alert('Escrow Failed', errorMessage);
+      console.error('Escrow failed:', error);
+    } finally {
+      setIsDepositing(false);
+    }
+  };
+
+  // Deposit Step (Quick Sell & Smart Sell)
   if (step === 'deposit' && orderData) {
+    const isSmartSell = mode === 'smart-sell';
     return (
       <SafeAreaView className="flex-1 bg-white" edges={['top']}>
         <View className="flex-1 px-6 py-8">
           <Text className="text-2xl font-bold text-neutral-900 text-center mb-2">
-            Deposit USDC
+            {isSmartSell ? 'Create Escrow' : 'Deposit USDC'}
           </Text>
           <Text className="text-neutral-500 text-center mb-8">
-            Confirm the transaction to deposit USDC to the liquidity pool
+            {isSmartSell
+              ? 'Confirm the transaction to lock USDC in escrow'
+              : 'Confirm the transaction to deposit USDC to the liquidity pool'}
           </Text>
 
           {/* Order Summary */}
@@ -296,7 +367,13 @@ export default function ConvertScreen() {
           <View className="flex-1" />
 
           <PrimaryButton
-            title={isDepositing ? 'Signing Transaction...' : 'Confirm Deposit'}
+            title={
+              isDepositing
+                ? 'Signing Transaction...'
+                : isSmartSell
+                ? 'Confirm Escrow'
+                : 'Confirm Deposit'
+            }
             onPress={handleDeposit}
             isLoading={isDepositing}
           />

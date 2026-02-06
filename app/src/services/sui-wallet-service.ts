@@ -193,7 +193,11 @@ const getAuthToken = async (): Promise<string | null> => {
 const executeEnokiSponsoredViaBackend = async (
   digest: string,
   userSignature: string
-): Promise<{ digest: string; success: boolean }> => {
+): Promise<{
+  digest: string;
+  success: boolean;
+  createdObjects?: Array<{ objectId: string; type: string }>;
+}> => {
   const token = await getAuthToken();
   if (!token) throw new Error('Not authenticated');
 
@@ -549,7 +553,19 @@ export const executeSmartSellEscrow = async (
   // Execute via Enoki backend
   const result = await executeEnokiSponsoredViaBackend(digest, zkLoginSig);
 
-  // TODO: Extract escrowObjectId from transaction effects
-  // For now, return result without escrowObjectId
-  return result;
+  // Extract escrowObjectId from created objects
+  let escrowObjectId: string | undefined;
+  if (result.createdObjects && result.createdObjects.length > 0) {
+    // Find escrow object by type pattern: ${packageId}::escrow::Escrow<${usdcType}>
+    const escrowObj = result.createdObjects.find((obj) =>
+      obj.type.includes('::escrow::Escrow<')
+    );
+    escrowObjectId = escrowObj?.objectId;
+  }
+
+  return {
+    digest: result.digest,
+    success: result.success,
+    escrowObjectId,
+  };
 };
