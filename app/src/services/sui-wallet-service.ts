@@ -12,8 +12,6 @@ import type { ZkLoginData } from './zklogin/zklogin-types';
 const TEST_USDC_TYPE =
   '0xfda5e7d874aee36569b18e6df8c62693e93c8dfa76e317543aa9bb827ed91d13::test_usdc::TEST_USDC';
 
-const FALLBACK_VND_RATE = 25000;
-
 // Lazy-loaded Sui SDK modules (only Transaction and zkLogin - no jsonRpc due to RN compat issues)
 let Transaction: any = null;
 let getZkLoginSignature: any = null;
@@ -74,20 +72,6 @@ export const fetchWalletBalance = async (
     console.error('Failed to fetch balance:', error);
     throw error;
   }
-};
-
-export const fetchCurrentRate = async (): Promise<number> => {
-  try {
-    const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.2.34:3000';
-    const response = await fetch(`${apiUrl}/rates/current`);
-    if (response.ok) {
-      const data = await response.json();
-      return data.sellRate || FALLBACK_VND_RATE;
-    }
-  } catch (error) {
-    console.warn('Failed to fetch rate:', error);
-  }
-  return FALLBACK_VND_RATE;
 };
 
 /**
