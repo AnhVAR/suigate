@@ -221,62 +221,37 @@ export class WebhooksService {
         `Match result for ${amountUsdc} USDC: ${matchResult.smartSellFills.length} smart sells, ${matchResult.poolFill} from pool`,
       );
 
-      // Execute partial fills from smart sells
+      // Build fills array for batched transaction
+      const fills = matchResult.smartSellFills.map((fill) => ({
+        escrowObjectId: fill.escrowObjectId,
+        fillAmountMist: Math.round(fill.fillAmount * 1_000_000),
+      }));
+      const poolDispenseMist = matchResult.poolFill > 0
+        ? Math.round(matchResult.poolFill * 1_000_000)
+        : 0;
+
+      // Execute all fills + pool dispense in a single PTB
+      const txDigest = await this.suiTx.batchFillAndDispense(
+        fills,
+        poolDispenseMist,
+        user.sui_address,
+      );
+
+      this.logger.log(
+        `Batched tx: ${fills.length} partial fills + ${poolDispenseMist > 0 ? 'pool dispense' : 'no pool'} (tx: ${txDigest})`,
+      );
+
+      // Record all match fills with the single tx hash
       for (const fill of matchResult.smartSellFills) {
-        const fillAmountMist = Math.round(fill.fillAmount * 1_000_000);
-
-        try {
-          const txDigest = await this.suiTx.partialFill(
-            fill.escrowObjectId,
-            fillAmountMist,
-            user.sui_address,
-          );
-
-          // Record match in order_matches table
-          await this.matchingEngine.recordMatchFill(order.id, fill, txDigest);
-
-          // Record transaction
-          await this.supabase.getClient().from('transactions').insert({
-            order_id: order.id,
-            tx_hash: txDigest,
-            tx_status: 'confirmed',
-          });
-
-          this.logger.log(
-            `Partial fill: ${fill.fillAmount} USDC from escrow ${fill.escrowObjectId} (tx: ${txDigest})`,
-          );
-        } catch (fillError) {
-          this.logger.error(
-            `Failed partial_fill for escrow ${fill.escrowObjectId}`,
-            fillError,
-          );
-          // Mark for manual review but continue with pool fill
-          await this.supabase
-            .getClient()
-            .from('orders')
-            .update({ needs_manual_review: true })
-            .eq('id', order.id);
-        }
+        await this.matchingEngine.recordMatchFill(order.id, fill, txDigest);
       }
 
-      // Dispense remainder from pool
-      if (matchResult.poolFill > 0) {
-        const txDigest = await this.suiTx.dispenseUsdc(
-          matchResult.poolFill,
-          user.sui_address,
-        );
-
-        // Record transaction
-        await this.supabase.getClient().from('transactions').insert({
-          order_id: order.id,
-          tx_hash: txDigest,
-          tx_status: 'confirmed',
-        });
-
-        this.logger.log(
-          `Pool dispense: ${matchResult.poolFill} USDC to ${user.sui_address} (tx: ${txDigest})`,
-        );
-      }
+      // Record single transaction entry
+      await this.supabase.getClient().from('transactions').insert({
+        order_id: order.id,
+        tx_hash: txDigest,
+        tx_status: 'confirmed',
+      });
 
       // Update order status to settled
       await this.supabase

@@ -256,6 +256,61 @@ export class SuiTransactionService implements OnModuleInit {
     throw lastError!;
   }
 
+  /**
+   * Batch multiple partial_fill + pool dispense into a single PTB.
+   * All escrows are shared objects, so they can be accessed in one transaction.
+   * @param fills Array of { escrowObjectId, fillAmountMist }
+   * @param poolDispenseAmountMist Amount to dispense from pool (0 to skip)
+   * @param recipientAddress Buyer's wallet address
+   * @returns Transaction digest
+   */
+  async batchFillAndDispense(
+    fills: Array<{ escrowObjectId: string; fillAmountMist: number }>,
+    poolDispenseAmountMist: number,
+    recipientAddress: string,
+  ): Promise<string> {
+    // Pre-check pool liquidity if pool dispense is needed
+    if (poolDispenseAmountMist > 0) {
+      await this.checkPoolLiquidity(poolDispenseAmountMist / 1_000_000);
+    }
+
+    const { Transaction } = await import('@mysten/sui/transactions');
+
+    const tx = new Transaction();
+
+    // Add partial_fill calls for each escrow
+    for (const fill of fills) {
+      tx.moveCall({
+        target: `${this.packageId}::escrow::partial_fill`,
+        arguments: [
+          tx.object(this.adminCapId),
+          tx.object(fill.escrowObjectId),
+          tx.pure.u64(fill.fillAmountMist),
+          tx.object(this.oracleId),
+          tx.object('0x6'), // Clock
+          tx.pure.address(recipientAddress),
+        ],
+        typeArguments: [this.usdcType],
+      });
+    }
+
+    // Add pool dispense if there's a remainder
+    if (poolDispenseAmountMist > 0) {
+      tx.moveCall({
+        target: `${this.packageId}::liquidity_pool::dispense`,
+        arguments: [
+          tx.object(this.adminCapId),
+          tx.object(this.poolId),
+          tx.pure.u64(poolDispenseAmountMist),
+          tx.pure.address(recipientAddress),
+        ],
+        typeArguments: [this.usdcType],
+      });
+    }
+
+    return this.signAndExecute(tx);
+  }
+
   private async signAndExecute(tx: any): Promise<string> {
     if (!this.signer) {
       throw new Error('Signer not initialized');
