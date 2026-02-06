@@ -265,16 +265,14 @@ export class SuiTransactionService implements OnModuleInit {
     }
 
     try {
-      const allowedTargets = [`${this.packageId}::liquidity_pool::deposit`];
-      this.logger.log(`[EnokiSponsor] allowedMoveCallTargets: ${allowedTargets}`);
       this.logger.log(`[EnokiSponsor] txKindBase64 length: ${txKindBase64.length}`);
+      this.logger.log(`[EnokiSponsor] txKindBase64 (first 100): ${txKindBase64.substring(0, 100)}`);
 
-      // Enoki SDK createSponsoredTransaction with strict allowedMoveCallTargets
+      // Enoki SDK createSponsoredTransaction (no allowedMoveCallTargets for debugging)
       const result = await this.enokiClient.createSponsoredTransaction({
         network: 'testnet',
         transactionKindBytes: txKindBase64,
         sender: senderAddress,
-        allowedMoveCallTargets: allowedTargets,
       });
 
       this.logger.log(`[EnokiSponsor] Success - digest: ${result.digest}`);
