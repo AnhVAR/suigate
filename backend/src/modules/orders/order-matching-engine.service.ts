@@ -30,9 +30,10 @@ export class OrderMatchingEngineService {
    */
   async calculateMatch(amountUsdc: number): Promise<MatchResult> {
     const rates = await this.ratesService.getCurrentRates();
-    const currentRate = rates.sellRate;
+    // Use buyRate for matching: buyer pays buyRate, so smart sells with target <= buyRate are eligible
+    const currentRate = rates.buyRate;
 
-    // Find eligible smart sells: target_rate <= current_rate, status = 'processing'
+    // Find eligible smart sells: target_rate <= buyRate, status = 'processing'
     const eligibleOrders = await this.findEligibleSmartSells(currentRate);
 
     let remaining = amountUsdc;
