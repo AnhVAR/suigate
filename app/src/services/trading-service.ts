@@ -53,41 +53,48 @@ export interface SmartSellComparison {
   savings: number;
 }
 
-/**
- * Fetch current VND/USDC rate from backend API
- * Falls back to cached or default rate on error
- */
-let cachedRate: number | null = null;
+export interface ExchangeRates {
+  buyRate: number;
+  sellRate: number;
+  midRate: number;
+}
+
+/** Fetch current rates from backend API with caching */
+let cachedRates: ExchangeRates | null = null;
 let lastFetchTime = 0;
 const CACHE_TTL = 60000; // 60 seconds
 
-export const getCurrentRate = async (): Promise<number> => {
+export const getExchangeRates = async (): Promise<ExchangeRates> => {
   try {
-    // Use cache if fresh
     const now = Date.now();
-    if (cachedRate && now - lastFetchTime < CACHE_TTL) {
-      return cachedRate;
+    if (cachedRates && now - lastFetchTime < CACHE_TTL) {
+      return cachedRates;
     }
 
-    // Fetch from real API
     const rates = await exchangeRatesApiService.getCurrentRates();
-    cachedRate = rates.buyRate; // Use buyRate for user-facing display
+    cachedRates = {
+      buyRate: rates.buyRate,
+      sellRate: rates.sellRate,
+      midRate: rates.midRate,
+    };
     lastFetchTime = now;
-
-    return cachedRate;
+    return cachedRates;
   } catch (error) {
-    console.error('Failed to fetch current rate:', error);
+    console.error('Failed to fetch rates:', error);
+    if (cachedRates) return cachedRates;
 
-    // Return cached rate if available
-    if (cachedRate) {
-      console.warn('Using cached rate due to API error');
-      return cachedRate;
-    }
-
-    // Final fallback to default rate
-    console.warn('Using fallback rate');
-    return FALLBACK_RATE;
+    return {
+      buyRate: FALLBACK_RATE * 1.005,
+      sellRate: FALLBACK_RATE * 0.995,
+      midRate: FALLBACK_RATE,
+    };
   }
+};
+
+/** Backward-compat: returns sellRate (used in convert screen for sell modes) */
+export const getCurrentRate = async (): Promise<number> => {
+  const rates = await getExchangeRates();
+  return rates.sellRate;
 };
 
 /**

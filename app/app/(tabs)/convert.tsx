@@ -12,7 +12,7 @@ import { useAuthStore } from '../../src/stores/authentication-store';
 import { useWalletStore } from '../../src/stores/wallet-balance-store';
 import { useBankAccountStore } from '../../src/stores/bank-account-store';
 import {
-  getCurrentRate,
+  getExchangeRates,
   createBuyOrder,
   createQuickSellOrder,
   createSmartSellOrder,
@@ -47,8 +47,9 @@ export default function ConvertScreen() {
   const [targetRate, setTargetRate] = useState('');
   const [selectedBankId, setSelectedBankId] = useState<number | null>(null);
 
-  // Rate state
-  const [currentRate, setCurrentRate] = useState(25000);
+  // Rate state - separate buy/sell rates
+  const [buyRate, setBuyRate] = useState(25000);
+  const [sellRate, setSellRate] = useState(25000);
   const [isLoadingRate, setIsLoadingRate] = useState(false);
 
   // Order state
@@ -72,8 +73,9 @@ export default function ConvertScreen() {
   const fetchRate = useCallback(async () => {
     setIsLoadingRate(true);
     try {
-      const rate = await getCurrentRate();
-      setCurrentRate(rate);
+      const rates = await getExchangeRates();
+      setBuyRate(rates.buyRate);
+      setSellRate(rates.sellRate);
     } finally {
       setIsLoadingRate(false);
     }
@@ -97,17 +99,19 @@ export default function ConvertScreen() {
 
   const canAccess = canAccessVndFeatures();
   const amountNum = parseFloat(amount) || 0;
-  const targetRateNum = parseFloat(targetRate) || currentRate;
+  // Use correct rate per mode: buyRate for buy, sellRate for sell
+  const currentRate = mode === 'buy' ? buyRate : sellRate;
+  const targetRateNum = parseFloat(targetRate) || sellRate;
 
   // Calculate output based on mode
   const getCalculation = () => {
     if (mode === 'buy') {
       const fee = amountNum * 0.005;
-      const usdc = (amountNum - fee) / currentRate;
+      const usdc = (amountNum - fee) / buyRate;
       return { output: usdc, fee };
     } else {
       const feeRate = mode === 'quick-sell' ? 0.005 : 0.002;
-      const rate = mode === 'smart-sell' ? targetRateNum : currentRate;
+      const rate = mode === 'smart-sell' ? targetRateNum : sellRate;
       const gross = amountNum * rate;
       const feeAmount = gross * feeRate;
       return { output: gross - feeAmount, fee: feeAmount };
