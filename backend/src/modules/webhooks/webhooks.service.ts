@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { SupabaseService } from '../../common/supabase/supabase.service';
 import { SuiTransactionService } from '../../common/sui/sui-transaction.service';
 import { OrderMatchingEngineService } from '../orders/order-matching-engine.service';
+import { RatesService } from '../rates/rates.service';
 import {
   SepayWebhookDto,
   SepayWebhookResponse,
@@ -19,6 +20,7 @@ export class WebhooksService {
     private supabase: SupabaseService,
     private suiTx: SuiTransactionService,
     private matchingEngine: OrderMatchingEngineService,
+    private ratesService: RatesService,
   ) {
     this.webhookSecret =
       this.config.get<string>('sepay.webhookSecret') || 'mock-secret';
@@ -220,6 +222,11 @@ export class WebhooksService {
       this.logger.log(
         `Match result for ${amountUsdc} USDC: ${matchResult.smartSellFills.length} smart sells, ${matchResult.poolFill} from pool`,
       );
+
+      // Ensure on-chain oracle is fresh before partial_fill (avoids E_STALE_PRICE)
+      if (matchResult.smartSellFills.length > 0) {
+        await this.ratesService.refreshRates();
+      }
 
       // Build fills array for batched transaction
       const fills = matchResult.smartSellFills.map((fill) => ({
