@@ -223,10 +223,8 @@ export class WebhooksService {
         `Match result for ${amountUsdc} USDC: ${matchResult.smartSellFills.length} smart sells, ${matchResult.poolFill} from pool`,
       );
 
-      // Ensure on-chain oracle is fresh before partial_fill (avoids E_STALE_PRICE)
-      if (matchResult.smartSellFills.length > 0) {
-        await this.ratesService.refreshRates();
-      }
+      // Get current rates for oracle sync inside the batch PTB
+      const rates = await this.ratesService.getCurrentRates();
 
       // Build fills array for batched transaction
       const fills = matchResult.smartSellFills.map((fill) => ({
@@ -238,10 +236,15 @@ export class WebhooksService {
         : 0;
 
       // Execute all fills + pool dispense in a single PTB
+      // Oracle update is included as first call to guarantee freshness
       const txDigest = await this.suiTx.batchFillAndDispense(
         fills,
         poolDispenseMist,
         user.sui_address,
+        fills.length > 0 ? {
+          midRate: Math.round(rates.midRate),
+          spreadBps: rates.spreadBps,
+        } : undefined,
       );
 
       this.logger.log(

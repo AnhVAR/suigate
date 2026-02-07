@@ -268,6 +268,7 @@ export class SuiTransactionService implements OnModuleInit {
     fills: Array<{ escrowObjectId: string; fillAmountMist: number }>,
     poolDispenseAmountMist: number,
     recipientAddress: string,
+    oracleRates?: { midRate: number; spreadBps: number },
   ): Promise<string> {
     // Pre-check pool liquidity if pool dispense is needed
     if (poolDispenseAmountMist > 0) {
@@ -277,6 +278,21 @@ export class SuiTransactionService implements OnModuleInit {
     const { Transaction } = await import('@mysten/sui/transactions');
 
     const tx = new Transaction();
+
+    // First: update oracle rates in the same PTB to guarantee freshness
+    // This prevents E_STALE_PRICE abort in partial_fill calls
+    if (fills.length > 0 && oracleRates) {
+      tx.moveCall({
+        target: `${this.packageId}::price_oracle::update_rates`,
+        arguments: [
+          tx.object(this.adminCapId),
+          tx.object(this.oracleId),
+          tx.pure.u64(oracleRates.midRate),
+          tx.pure.u64(oracleRates.spreadBps),
+          tx.object('0x6'), // Clock
+        ],
+      });
+    }
 
     // Add partial_fill calls for each escrow
     for (const fill of fills) {
