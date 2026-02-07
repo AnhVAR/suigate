@@ -65,6 +65,10 @@ BEGIN
   SET
     filled_usdc = COALESCE(filled_usdc, 0) + p_fill_amount,
     remaining_usdc = COALESCE(remaining_usdc, amount_usdc) - p_fill_amount,
+    status = CASE
+      WHEN (COALESCE(remaining_usdc, amount_usdc) - p_fill_amount) <= 0 THEN 'settled'
+      ELSE status
+    END,
     updated_at = NOW()
   WHERE id = p_order_id;
 END;

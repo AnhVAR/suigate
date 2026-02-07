@@ -199,6 +199,15 @@ export class OrderMatchingEngineService {
       this.logger.error('Failed to update smart sell fill', error);
       throw new Error('Failed to update smart sell fill amounts');
     }
+
+    // Auto-settle fully filled smart sells (in case SQL function doesn't handle it)
+    await this.supabase
+      .getClient()
+      .from('orders')
+      .update({ status: 'settled', updated_at: new Date().toISOString() })
+      .eq('id', orderId)
+      .eq('status', 'processing')
+      .lte('remaining_usdc', 0);
   }
 
   /**
