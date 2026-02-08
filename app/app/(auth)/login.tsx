@@ -53,9 +53,10 @@ export default function LoginScreen() {
       <View style={styles.content}>
         {/* Logo & Title */}
         <View style={styles.header}>
-          <View style={styles.logo}>
-            <MaterialIcons name="account-balance-wallet" size={40} color="white" />
-          </View>
+          <Image
+            source={require('../../assets/brand/suigate-icon-light.png')}
+            style={styles.logo}
+          />
           <Text style={styles.title}>Welcome to SuiGate</Text>
           <Text style={styles.subtitle}>
             VND to USDC conversion wallet{'\n'}for Vietnam
@@ -127,10 +128,7 @@ const styles = StyleSheet.create({
   logo: {
     width: 80,
     height: 80,
-    backgroundColor: '#8b5cf6',
     borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
     marginBottom: 24,
   },
   title: {

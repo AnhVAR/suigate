@@ -38,10 +38,10 @@ export default function KycVerificationScreen() {
           <View className="w-24 h-24 bg-primary-100 rounded-full items-center justify-center mb-6">
             <MaterialIcons name="verified-user" size={48} color="#8b5cf6" />
           </View>
-          <Text className="text-2xl font-bold text-neutral-900 mb-2">
+          <Text style={{ fontSize: 24, fontWeight: '700', color: '#111827', marginBottom: 8, textAlign: 'center', width: '100%' }}>
             Verifying Identity
           </Text>
-          <Text className="text-neutral-500 text-center">
+          <Text style={{ color: '#6b7280', textAlign: 'center', width: '100%' }}>
             Please wait while we verify your information...
           </Text>
 
@@ -62,10 +62,10 @@ export default function KycVerificationScreen() {
           <View className="w-24 h-24 bg-success/10 rounded-full items-center justify-center mb-6">
             <MaterialIcons name="check-circle" size={56} color="#22c55e" />
           </View>
-          <Text className="text-2xl font-bold text-neutral-900 mb-2">
+          <Text style={{ fontSize: 24, fontWeight: '700', color: '#111827', marginBottom: 8, textAlign: 'center', width: '100%' }}>
             Verification Complete
           </Text>
-          <Text className="text-neutral-500 text-center mb-8">
+          <Text style={{ color: '#6b7280', textAlign: 'center', marginBottom: 32, width: '100%' }}>
             Your identity has been verified successfully
           </Text>
 
@@ -83,24 +83,24 @@ export default function KycVerificationScreen() {
           <View className="w-20 h-20 bg-primary-100 rounded-full items-center justify-center mb-4">
             <MaterialIcons name="badge" size={40} color="#8b5cf6" />
           </View>
-          <Text className="text-2xl font-bold text-neutral-900 mb-2">
+          <Text style={{ fontSize: 24, fontWeight: '700', color: '#111827', marginBottom: 8, textAlign: 'center', width: '100%' }}>
             Verify Your Identity
           </Text>
-          <Text className="text-neutral-500 text-center">
+          <Text style={{ color: '#6b7280', textAlign: 'center', width: '100%' }}>
             Required to access VND conversion features
           </Text>
         </View>
 
         {/* Requirements List */}
         <View className="bg-neutral-50 rounded-card p-4 mb-6">
-          <Text className="text-neutral-700 font-semibold mb-3">
+          <Text className="font-semibold mb-3" style={{ color: '#374151' }}>
             What you'll need:
           </Text>
           {['Government-issued ID', 'Clear selfie photo', 'Valid email address'].map(
             (item, index) => (
               <View key={index} className="flex-row items-center mb-2">
                 <MaterialIcons name="check-circle" size={18} color="#22c55e" />
-                <Text className="text-neutral-600 ml-2">{item}</Text>
+                <Text className="ml-2" style={{ color: '#4b5563' }}>{item}</Text>
               </View>
             )
           )}
@@ -110,7 +110,7 @@ export default function KycVerificationScreen() {
         <View className="bg-warning/10 rounded-card p-4 mb-8">
           <View className="flex-row items-start">
             <MaterialIcons name="info" size={20} color="#f59e0b" />
-            <Text className="text-neutral-700 ml-2 flex-1 text-sm">
+            <Text className="ml-2 flex-1 text-sm" style={{ color: '#374151' }}>
               <Text className="font-semibold">Demo Mode: </Text>
               KYC will auto-approve. Real FPT.AI integration planned for production.
             </Text>
@@ -122,7 +122,7 @@ export default function KycVerificationScreen() {
           <PrimaryButton title="Start Verification" onPress={handleStartKyc} />
 
           <TouchableOpacity onPress={handleSkip} className="items-center py-3">
-            <Text className="text-neutral-500">
+            <Text style={{ color: '#6b7280' }}>
               Skip for now (limited features)
             </Text>
           </TouchableOpacity>

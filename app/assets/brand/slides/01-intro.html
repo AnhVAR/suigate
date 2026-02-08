@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    width: 1920px; height: 1080px; overflow: hidden;
+    background: #0a0a1a;
+    font-family: -apple-system, 'SF Pro Display', 'Inter', sans-serif;
+    color: #fff;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .bg {
+    position: absolute; inset: 0;
+    background:
+      radial-gradient(ellipse at 30% 50%, rgba(139,92,246,0.15) 0%, transparent 60%),
+      radial-gradient(ellipse at 70% 60%, rgba(109,40,217,0.1) 0%, transparent 50%);
+  }
+  .grid {
+    position: absolute; inset: 0; opacity: 0.04;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.3) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.3) 1px, transparent 1px);
+    background-size: 60px 60px;
+  }
+  .content { position: relative; text-align: center; z-index: 1; }
+  .logo-icon {
+    width: 120px; height: 120px; margin: 0 auto 32px;
+    background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+    border-radius: 28px;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 60px rgba(139,92,246,0.3), 0 0 120px rgba(139,92,246,0.1);
+  }
+  .logo-icon svg { width: 72px; height: 72px; }
+  h1 {
+    font-size: 72px; font-weight: 700; letter-spacing: -2px;
+    background: linear-gradient(135deg, #c4b5fd, #8b5cf6);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    margin-bottom: 16px;
+  }
+  .tagline {
+    font-size: 28px; color: #a78bfa; font-weight: 400;
+    margin-bottom: 48px; letter-spacing: 0.5px;
+  }
+  .badges {
+    display: flex; gap: 16px; justify-content: center; flex-wrap: wrap;
+  }
+  .badge {
+    padding: 10px 24px; border-radius: 100px;
+    background: rgba(139,92,246,0.12); border: 1px solid rgba(139,92,246,0.25);
+    font-size: 16px; color: #c4b5fd; font-weight: 500;
+  }
+  .corner-tag {
+    position: absolute; bottom: 40px; right: 48px;
+    font-size: 14px; color: rgba(255,255,255,0.3);
+  }
+</style></head>
+<body>
+  <div class="bg"></div>
+  <div class="grid"></div>
+  <div class="content">
+    <div class="logo-icon">
+      <svg viewBox="0 0 100 100" fill="none">
+        <path d="M25 85 L25 40 Q25 15 50 15 Q75 15 75 40 L75 85" stroke="white" stroke-width="12" stroke-linecap="round" fill="none"/>
+      </svg>
+    </div>
+    <h1>SuiGate</h1>
+    <p class="tagline">Mobile Wallet for Vietnam Crypto Market</p>
+    <div class="badges">
+      <span class="badge">Sui Blockchain</span>
+      <span class="badge">zkLogin</span>
+      <span class="badge">VND &harr; USDC</span>
+      <span class="badge">VietQR</span>
+      <span class="badge">Gasless</span>
+    </div>
+  </div>
+  <div class="corner-tag">ETHGlobal HackMoney 2026</div>
+</body></html>
