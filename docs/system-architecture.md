@@ -27,14 +27,15 @@
 
 | Layer | Technology | Rationale |
 |-------|------------|-----------|
-| Mobile | Expo SDK 52 + TypeScript | Cross-platform, fast iteration |
-| State | Zustand | Lightweight, hooks-based |
-| Backend | NestJS + TypeScript | Modular, type-safe |
-| Database | Supabase (PostgreSQL) | Free tier, RLS, realtime |
-| Queue | Bull + Redis (Railway) | Reliable, retries |
+| Mobile | Expo 54 + React Native 0.81.5 | Cross-platform, native modules |
+| State | Zustand 5.0.10 | Lightweight, hooks-based |
+| Backend | NestJS + TypeScript | Modular, type-safe, battle-tested |
+| Database | Supabase (PostgreSQL) + RLS | Free tier, auth, row-level security |
+| Queue | BullMQ + Redis | Reliable job scheduling, retries |
 | Blockchain | Sui Network + Move | zkLogin native, fast finality |
 | Payment | SePay (VietQR) | Vietnamese bank transfer |
-| Price | Binance API | VND/USDC mid-rate + spread |
+| Price Feed | exchange-api (free) | VND/USDC mid-rate, no auth needed |
+| Admin | Next.js 14 + TanStack Query | Real-time operations, analytics |
 
 ---
 
@@ -220,7 +221,7 @@ public entry fun execute_escrow(admin_cap, escrow, oracle, clock, recipient, ctx
     assert!(current_rate >= escrow.target_rate, E_RATE_NOT_MET);
     // ... transfer USDC
 }
-public entry fun partial_fill(admin_cap, escrow, fill_amount, recipient, ctx)
+public entry fun partial_fill(admin_cap, escrow, fill_amount, buy_rate, recipient, ctx)
 ```
 
 ### Module: liquidity_pool.move
@@ -286,6 +287,61 @@ sell_rate = 25,000 × 0.9975 = 24,937.50 VND  (user receives less)
 
 **MVP:** On-chain oracle. Backend fetches Binance mid-rate, updates oracle every 5 min.
 **Contracts read rates directly from oracle (trustless).**
+
+### Batch PTB Optimization
+
+**Problem:** Smart sell execution requires 3 separate transactions:
+1. Update oracle with latest rate
+2. Execute escrow when rate matches
+3. Dispense pool liquidity to recipient
+
+This creates inefficiency and stale oracle reads between ops.
+
+**Solution:** Batch PTB combines all 3 into single transaction:
+```
+┌─ Batch Programmable Transaction Block
+│  ├─ oracle::update_rates() - Fetch latest rate
+│  ├─ escrow::execute_escrow() - Read fresh rate, validate, execute
+│  └─ liquidity_pool::dispense_usdc() - Transfer VND recipient
+└─ Single atomic operation
+```
+
+**Benefits:**
+- Prevents stale oracle reads (all use same block's oracle state)
+- Reduces gas by ~66% (1 tx vs 3)
+- Atomic settlement (all-or-nothing)
+- Backend constructs PTB, Sui Enoki signs for free
+
+**Implementation:** `sui-transaction.service.ts` builds batch PTB for smart sell fills.
+
+### buy_rate in partial_fill
+
+**Context:** Smart sell orders can fill partially. Each fill must apply the current buy_rate for accurate VND calculation.
+
+**Function Signature:**
+```move
+public entry fun partial_fill(
+  admin_cap: &AdminCap,
+  escrow: &mut Escrow,
+  fill_amount: u64,
+  buy_rate: u64,          // Current rate at time of fill
+  recipient: address,
+  ctx: &mut TxContext
+)
+```
+
+**How it works:**
+1. Backend fetches current buy_rate from oracle
+2. Calculates VND payout: `fill_amount × buy_rate`
+3. Calls partial_fill with fresh buy_rate
+4. Contract applies rate in calculation
+5. User receives accurate VND amount
+
+**Example:**
+- User created smart sell: 100 USDC at target 27,000 VND/USDC
+- Market reaches 27,500 VND/USDC
+- Backend fills 70 USDC now: `70 × 27,500 = 1,925,000 VND`
+- Later fills 30 USDC at different rate
 
 ### Function Access Matrix
 
@@ -457,6 +513,52 @@ PRIVATE ZONE
 | US-10 | Errors | Mobile + Backend |
 | US-11 | i18n | Mobile |
 | US-12 | Bank Accounts | Backend + Supabase |
+
+---
+
+## Admin Dashboard Architecture
+
+**Location:** `/admin` (Next.js 14)
+**Deployment:** Vercel
+**Auth:** Google OAuth + zkLogin → JWT (24h) → Secure cookie
+
+### Pages
+
+| Page | Purpose | Features |
+|------|---------|----------|
+| `/dashboard/orders` | Real-time order management | Filter by status/type, approve/settle/cancel |
+| `/dashboard/orders/[id]` | Order detail | View escrow state, transaction hash, manual review |
+| `/dashboard/users` | User management | KYC status, location verification, volume |
+| `/dashboard/analytics` | Business metrics | Charts (volume, fees, settlement success) |
+
+### State Management
+
+- **TanStack Query (@tanstack/react-query)**: Server state + caching
+- **React Hooks**: Local component state
+- **Fetcher**: Centralized API client with Bearer token auth
+
+### API Integration
+
+All requests include JWT in Authorization header:
+```typescript
+const api = async (url: string, options?: RequestInit) => {
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  });
+  return response.json();
+};
+```
+
+### Charts & Visualizations
+
+- **Recharts 3.7.0** for analytics dashboards
+- Volume trends (24h, 7d, 30d)
+- Settlement success rate
+- Fee collection breakdown
 
 ---
 

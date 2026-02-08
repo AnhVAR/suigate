@@ -50,40 +50,41 @@ Mobile wallet enabling VND ↔ USDC conversion on Sui Network, targeting Vietnam
 
 | Layer | Technology | Rationale |
 |-------|------------|-----------|
-| **Mobile** | Expo (React Native) + TypeScript | Cross-platform, fast iteration |
-| **Backend** | NestJS + TypeScript | Structured, scalable, type-safe |
+| **Mobile** | Expo 54 (React Native 0.81.5) + TypeScript | Cross-platform, fast iteration |
+| **Backend** | NestJS 10 + TypeScript | Structured, scalable, type-safe |
 | **Database** | Supabase (PostgreSQL) | Free tier, auth, realtime |
 | **Blockchain** | Sui Network + Move | zkLogin native, fast finality |
-| **Auth** | Sui zkLogin | No seed phrase, OAuth login |
-| **Payment** | SePay (VietQR) | Vietnamese bank transfer |
-| **Price Feed** | Binance/CoinGecko API | Real-time VND/USDC rate |
-| **Deploy** | Railway/Vercel + EAS Build | Cloud, CI/CD ready |
+| **Auth** | Sui zkLogin + expo-secure-store | No seed phrase, OAuth login |
+| **Payment** | SePay (VietQR) | Vietnamese bank transfer, production API |
+| **Price Feed** | exchange-api (free) | Real-time VND/USDC rate, every 5 minutes |
+| **Admin** | Next.js 14 + React 18 | Dashboard (orders, users, analytics) |
+| **Deploy** | Render (backend) + Vercel (admin, oauth-proxy) | Cloud, CI/CD ready |
 
 ---
 
 ## Feature Scope (12 User Stories)
 
-### Priority 1: MUST HAVE
+### Priority 1: MUST HAVE (ALL DONE)
 
-| US | Feature | Description |
-|----|---------|-------------|
-| US-01 | zkLogin Wallet | Create wallet via Google/Apple OAuth |
-| US-04 | View Balance | Display USDC balance + VND equivalent |
-| US-09 | Navigation | Bottom tabs: Home, Trade, History, Settings |
-| US-10 | Error Handling | Clear error messages with retry actions |
+| US | Feature | Status |
+|----|---------|--------|
+| US-01 | zkLogin Wallet | DONE - Google OAuth, zkLogin, secure storage |
+| US-04 | View Balance | DONE - Sui RPC balance + VND conversion |
+| US-09 | Navigation | DONE - Bottom tabs (Home, Trade, History, Settings) |
+| US-10 | Error Handling | DONE - Network, validation, boundary, toast errors |
 
-### Priority 2: SHOULD HAVE
+### Priority 2: SHOULD HAVE (ALL DONE)
 
-| US | Feature | Description |
-|----|---------|-------------|
-| US-02 | Mock KYC | Simulated verification (auto-approve for demo) |
-| US-03 | Location Check | GPS verification for sandbox zone (500m radius) |
-| US-05 | Transaction History | List past transactions with filters |
-| US-06 | Buy USDC | VND → USDC via VietQR bank transfer |
-| US-07 | Quick Sell | Instant USDC → VND at market rate (0.5% fee) |
-| US-08 | Smart Sell | Set target rate, auto-sell when hit (0.2% fee) |
-| US-11 | Multi-language | Vietnamese + English support |
-| US-12 | Bank Accounts | Save and manage bank accounts for off-ramp |
+| US | Feature | Status |
+|----|---------|--------|
+| US-02 | Mock KYC | DONE - Auto-approve flow for demo |
+| US-03 | Location Check | DONE - GPS verification (Da Nang sandbox, 500m radius) |
+| US-05 | Transaction History | DONE - Chronological list with type/amount/status/filters |
+| US-06 | Buy USDC | DONE - VietQR payment, webhook integration |
+| US-07 | Quick Sell | DONE - Instant at market rate, 0.5% fee, auto bank transfer |
+| US-08 | Smart Sell | DONE - Target rate, escrow, partial fill, auto-settle, 0.2% fee |
+| US-11 | Multi-language | DONE - Vietnamese + English with locale formatting |
+| US-12 | Bank Accounts | DONE - CRUD with AES-256 encryption |
 
 ---
 
@@ -113,39 +114,41 @@ LIQUIDITY POOL:
 
 ---
 
-## Timeline
+## Timeline (COMPLETED)
 
-| Day | Focus | Deliverables |
-|-----|-------|--------------|
-| 1-2 | Auth & Setup | zkLogin + Navigation + i18n setup |
-| 2 | Onboarding | GPS verification + Mock KYC |
-| 3 | Wallet Core | Balance display + Bank account management |
-| 4 | On-Ramp | Buy USDC (SePay VietQR integration) |
-| 5 | Off-Ramp | Quick Sell + Smart Sell |
-| 6 | History | Transaction history + Error handling |
-| 7 | Polish | Testing + Bug fixes |
-| 8 | Submit | Demo video + Submission |
+| Day | Focus | Status |
+|-----|-------|--------|
+| 1-2 | Auth & Setup | DONE - zkLogin + Navigation + i18n |
+| 2 | Onboarding | DONE - GPS verification + Mock KYC |
+| 3 | Wallet Core | DONE - Balance display + Bank account CRUD |
+| 4 | On-Ramp | DONE - Buy USDC with SePay VietQR |
+| 5 | Off-Ramp | DONE - Quick Sell + Smart Sell orders |
+| 6 | History | DONE - Transaction history + Error handling |
+| 7 | Admin + Batch | DONE - Admin dashboard + batch PTB optimization |
+| 8 | Submit | DONE - Demo video + Submission (Feb 8) |
 
 ---
 
-## Key Decisions
+## Key Decisions (IMPLEMENTED)
 
 | Topic | Decision |
 |-------|----------|
-| VND/USDC Rate | Fetch from Binance/CoinGecko API |
-| Smart Sell Escrow | On-chain (Move smart contract) |
-| VND Transfer Out | Auto via SePay disbursement |
-| VND Balance Storage | None - direct conversion only |
-| Transaction Limits | None for MVP |
-| GPS Boundary | 500m radius from specific locations |
-| Target Rate Range | ±10% from current market rate |
-| Smart Sell Matching | Best rate first |
-| Empty Pool | Block trading, show "Temporarily out of liquidity" |
-| Transfer Fail | Manual review, flag for admin |
+| Price Feed | exchange-api (free, replaced CoinGecko), updates every 5 min via cron |
+| Oracle Rates | Separate buy_rate and sell_rate (50 bps spread) |
+| Smart Sell Escrow | On-chain (Move smart contract with shared escrow objects) |
+| Batch PTB | 3 smart sell fills + pool dispense → 1 PTB (gas optimization) |
+| Auto-Settle | Smart Sell orders settle automatically when fully filled |
+| VND Transfer Out | Auto via SePay disbursement (production API) |
+| Bank Accounts | AES-256 encrypted, CRUD enabled |
+| Admin Dashboard | Implemented (orders, users, analytics) - was out-of-scope |
+| Key Storage | expo-secure-store for zkLogin private keys |
+| GPS Locations | Da Nang sandbox (500m radius), verified on login |
+| Order Matching | Price-time priority (best rate first) |
+| Empty Pool | Block trading, show clear error message |
 
 ---
 
-## Out of Scope (Hackathon)
+## Out of Scope (Hackathon MVP)
 
 - Send USDC to address (P2P transfer)
 - Real eKYC (FPT.AI integration)
@@ -153,17 +156,17 @@ LIQUIDITY POOL:
 - Push notifications (beyond in-app)
 - Advanced order types (expiry, stop-loss)
 - Dispute resolution system
-- Admin dashboard for Liquidity Pool
 
 ---
 
-## Open Questions
+## Implementation Notes
 
-1. **SePay Sandbox** - Does SePay have a test mode?
-2. **USDC Liquidity** - Where to fund testnet USDC for demo?
-3. **zkLogin Key Storage** - Use expo-secure-store or alternative?
-4. **Rate Update Frequency** - How often to fetch rate? (5s, 30s, 1min?)
-5. **GPS Locations** - Which specific locations for 500m radius?
+- **SePay Integration** - Production API with webhook support, auto VND disbursement
+- **USDC Liquidity** - Platform-funded pool on Sui Testnet
+- **zkLogin Key Storage** - expo-secure-store used for private key storage
+- **Rate Updates** - Every 5 minutes via cron job (exchange-api)
+- **GPS Locations** - Da Nang city center (10.7769°N, 106.6669°E) with 500m radius
+- **Contract Modules** - admin_cap, price_oracle, liquidity_pool, escrow, test_usdc
 
 ---
 

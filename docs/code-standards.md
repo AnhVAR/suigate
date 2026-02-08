@@ -87,15 +87,16 @@ helper.ts             # Unclear purpose
 
 ```
 /contracts/sources/
-├── vnd_usdc.move         # VND↔USDC conversion logic
-├── oracle.move           # Custom VND price oracle
-├── sponsored_txn.move    # Sponsored transaction handler
-└── zklogin.move          # zkLogin wrapper
+├── admin_cap.move        # AdminCap capability pattern (20 LOC)
+├── price_oracle.move     # Buy/sell rates + staleness check (132 LOC)
+├── liquidity_pool.move   # Platform USDC reserve (175 LOC)
+├── escrow.move           # Smart sell escrow + partial_fill (207 LOC)
+└── test_usdc.move        # Testnet USDC token (90 LOC)
 
 /contracts/tests/
-├── vnd_usdc_tests.move
-├── oracle_tests.move
-└── sponsored_txn_tests.move
+├── escrow_tests.move     # 6 escrow tests
+└── suigate_tests.move    # 5 integration tests
+All tests passing (11/11)
 ```
 
 ## TypeScript/React Native Conventions
@@ -273,6 +274,83 @@ export const MyComponent = () => (
     <Text style={styles.title}>Title</Text>
   </View>
 );
+```
+
+## NestJS Backend Conventions
+
+### Module Organization
+
+```typescript
+// Good: Feature module with clear responsibilities
+src/modules/orders/
+├── orders.controller.ts           // HTTP endpoints
+├── orders.service.ts              // Business logic
+├── order-matching-engine.service.ts // Specialized service
+├── smart-sell-executor.service.ts   // Specialized service
+├── orders.module.ts               // Module definition
+├── dto/
+│   ├── create-order.dto.ts
+│   ├── update-order.dto.ts
+│   └── order-response.dto.ts
+└── entities/
+    └── order.entity.ts
+```
+
+### DTO Best Practices
+
+**CRITICAL:** All DTO properties MUST have class-validator decorators:
+
+```typescript
+// Good
+import { IsString, IsNumber, IsOptional } from 'class-validator';
+
+export class CreateOrderDto {
+  @IsNumber()
+  amountUsdc: number;
+
+  @IsString()
+  bankAccountId: string;
+
+  @IsNumber()
+  @IsOptional()
+  targetRate?: number;
+}
+
+// Bad - Missing decorators causes "property X should not exist" error
+export class CreateOrderDto {
+  amountUsdc: number;
+  bankAccountId: string;
+}
+```
+
+### Service Naming
+
+Use descriptive names for specialized services:
+
+```typescript
+// Good
+export class OrderMatchingEngineService {}
+export class SmartSellExecutorService {}
+export class QuickSellDepositCheckerService {}
+export class VietqrGeneratorService {}
+
+// Avoid
+export class HelperService {}
+export class UtilService {}
+```
+
+### Error Handling
+
+```typescript
+// Good: Custom exception
+export class InsufficientLiquidityException extends BadRequestException {
+  constructor() {
+    super('Pool temporarily out of liquidity');
+  }
+}
+
+// Usage in service
+throw new InsufficientLiquidityException();
 ```
 
 ## Move Smart Contract Conventions
@@ -541,21 +619,43 @@ See security guidelines in project-overview-pdr.md for additional requirements.
 
 ## Dependency Management
 
-### React Version (Critical)
+### Critical Version Constraints
 
-Expo 54 requires exact versions. **DO NOT** change these:
-
+**Mobile (Expo 54, React Native 0.81.5):**
 ```json
-// app/package.json
 "react": "19.1.0",
-"react-dom": "19.1.0"
-
-// Root & app package.json overrides
-"overrides": {
-  "react": "19.1.0",
-  "react-dom": "19.1.0"
-}
+"react-dom": "19.1.0",
+"expo": "54.x",
+"react-native": "0.81.5",
+"@mysten/sui": "2.1.0",
+"@mysten/zklogin": "0.8.1",
+"zustand": "5.0.10",
+"axios": "1.13.4",
+"i18next": "25.8.0"
 ```
+
+**Backend (NestJS, Node 18+):**
+```json
+"@nestjs/core": "^10.0.0",
+"@nestjs/common": "^10.0.0",
+"typeorm": "^0.3.0",
+"@supabase/supabase-js": "^2.0.0",
+"@mysten/sui.js": "^0.45.0",
+"axios": "^1.6.0",
+"bullmq": "^5.0.0"
+```
+
+**Admin (Next.js 14, React 18):**
+```json
+"next": "^14.0.0",
+"react": "^18.0.0",
+"react-dom": "^18.0.0",
+"@mysten/zklogin": "^0.8.1",
+"recharts": "^3.7.0",
+"@tanstack/react-query": "^5.0.0"
+```
+
+### React Hook Call Errors (Expo)
 
 **If "Invalid hook call" error occurs:**
 ```bash
@@ -566,8 +666,22 @@ npx expo start --android --clear
 
 ### Adding New Packages
 
-Always check Expo compatibility first:
+**Mobile:**
 ```bash
-npx expo install <package-name>  # Preferred
+npx expo install <package-name>  # Preferred - handles native modules
 npm install <package-name>        # Only if not Expo-managed
+```
+
+**Backend:**
+```bash
+cd backend
+npm install <package-name>
+npm install --save-dev @types/<package-name>  # TypeScript types
+```
+
+**Admin:**
+```bash
+cd admin
+npm install <package-name>
+npm install --save-dev @types/<package-name>  # TypeScript types
 ```
