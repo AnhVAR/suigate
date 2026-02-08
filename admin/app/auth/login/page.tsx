@@ -2,7 +2,7 @@
 
 import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Zap } from 'lucide-react';
+import Image from 'next/image';
 import { GoogleLoginButton } from '@/components/auth/google-login-button';
 import { parseOAuthCallback, authenticateAdmin } from '@/lib/zklogin-web-auth';
 import { setAdminSession } from '@/lib/admin-session';
@@ -63,8 +63,8 @@ function LoginContent() {
       <div className="relative w-full max-w-md space-y-8 rounded-2xl border border-border/50 bg-card p-8 shadow-xl">
         {/* Logo & Header */}
         <div className="text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-            <Zap className="h-8 w-8" />
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl overflow-hidden">
+            <Image src="/brand/suigate-icon-light.png" alt="SuiGate" width={56} height={56} />
           </div>
           <h1 className="text-3xl font-bold tracking-tight">SuiGate</h1>
           <h2 className="mt-1 text-lg font-medium text-muted-foreground">

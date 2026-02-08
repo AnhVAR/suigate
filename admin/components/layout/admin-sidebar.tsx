@@ -2,13 +2,13 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import Image from 'next/image';
 import {
   ShoppingCart,
   Users,
   BarChart3,
   LogOut,
   ChevronLeft,
-  Zap,
 } from 'lucide-react';
 
 import {
@@ -63,8 +63,8 @@ export function AdminSidebar({ onLogout }: AdminSidebarProps) {
       {/* Header with Logo */}
       <SidebarHeader className="h-16 border-b border-border/50">
         <div className="flex h-full items-center gap-3 px-2">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <Zap className="h-5 w-5" />
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg overflow-hidden">
+            <Image src="/brand/suigate-icon-light.png" alt="SuiGate" width={36} height={36} />
           </div>
           {!isCollapsed && (
             <div className="flex flex-col">
